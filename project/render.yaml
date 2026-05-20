@@ -1,0 +1,29 @@
+# Render Blueprint for CC Invest
+services:
+  - type: web
+    name: cc-invest-api
+    env: python
+    region: singapore
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py webhook
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: BINANCE_API_KEY
+        sync: false
+      - key: BINANCE_API_SECRET
+        sync: false
+      - key: COINGECKO_API_KEY
+        sync: false
+      - key: TRADING_MODE
+        value: paper
+      - key: INITIAL_CAPITAL
+        value: "10000"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: OPENCLAW_WEBHOOK_TOKEN
+        generateValue: true
+      - key: ENVIRONMENT
+        value: production
