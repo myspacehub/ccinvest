@@ -34,25 +34,25 @@ class StrategyProfile:
 PROFILES: Dict[AssetClass, StrategyProfile] = {
     "crypto": StrategyProfile(
         asset_class="crypto",
-        min_bars=80,
-        min_confidence=68,
-        high_atr_pct=8.0,
-        extreme_atr_pct=14.0,
-        base_risk_pct=0.006,
-        max_risk_pct=0.015,
-        volume_confirm_ratio=1.08,
-        overextension_atr_multiple=2.4,
+        min_bars=50,                # 降低K线要求，加速信号
+        min_confidence=58,          # 适度置信度
+        high_atr_pct=10.0,          # 容许更大波动
+        extreme_atr_pct=18.0,
+        base_risk_pct=0.01,         # 基础仓位1%
+        max_risk_pct=0.025,         # 最大2.5%
+        volume_confirm_ratio=1.05,  # 轻微放量即可
+        overextension_atr_multiple=3.0,
     ),
     "us_equity": StrategyProfile(
         asset_class="us_equity",
-        min_bars=80,
-        min_confidence=72,
-        high_atr_pct=4.5,
-        extreme_atr_pct=8.0,
-        base_risk_pct=0.004,
-        max_risk_pct=0.010,
-        volume_confirm_ratio=1.15,
-        overextension_atr_multiple=2.0,
+        min_bars=50,
+        min_confidence=62,
+        high_atr_pct=6.0,
+        extreme_atr_pct=10.0,
+        base_risk_pct=0.008,
+        max_risk_pct=0.02,
+        volume_confirm_ratio=1.1,
+        overextension_atr_multiple=2.5,
     ),
 }
 
