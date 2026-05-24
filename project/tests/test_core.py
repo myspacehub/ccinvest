@@ -180,6 +180,163 @@ class TestWebhook:
         assert body["interval"] == "1d"
         assert body["data"][0]["open"] == 100.0
         assert body["data"][0]["close"] == 105.0
+    
+    def test_price_endpoint_supports_us_equity_yahoo_fallback(self, monkeypatch):
+        """测试美股价格接口走 Yahoo fallback 时不会触发缓存异常"""
+        from fastapi.testclient import TestClient
+        import requests
+        import src.webhook_server as webhook_server
+        
+        class FakeResponse:
+            def __init__(self, ok, payload):
+                self.ok = ok
+                self._payload = payload
+            
+            def json(self):
+                return self._payload
+        
+        def fake_get(url, *args, **kwargs):
+            if "query1.finance.yahoo.com" in url and "AAPL" in url:
+                return FakeResponse(True, {
+                    "chart": {
+                        "result": [{
+                            "meta": {
+                                "regularMarketPrice": 210.0,
+                                "previousClose": 200.0,
+                                "regularMarketVolume": 50_000_000,
+                                "regularMarketDayHigh": 212.0,
+                                "regularMarketDayLow": 198.0,
+                                "longName": "Apple Inc.",
+                            }
+                        }]
+                    }
+                })
+            return FakeResponse(False, {})
+        
+        monkeypatch.setattr(webhook_server, "HAS_PRICE_FETCHER", False)
+        monkeypatch.delattr(webhook_server.webhook_price, "_cache", raising=False)
+        monkeypatch.setattr(requests, "get", fake_get)
+        
+        client = TestClient(webhook_server.app)
+        response = client.get("/webhooks/price/AAPL")
+        
+        assert response.status_code == 200
+        body = response.json()
+        assert body["symbol"] == "AAPL"
+        assert body["price"] == 210.0
+        assert body["total_volume"] == 50_000_000
+    
+    def test_price_endpoint_uses_equity_history_when_quote_is_unavailable(self, monkeypatch):
+        """测试美股报价不可用时使用日线 K 线生成价格卡片"""
+        from fastapi.testclient import TestClient
+        import requests
+        import src.webhook_server as webhook_server
+        
+        class FakeResponse:
+            ok = False
+            
+            def json(self):
+                return {}
+        
+        monkeypatch.setattr(webhook_server, "HAS_PRICE_FETCHER", False)
+        monkeypatch.delattr(webhook_server.webhook_price, "_cache", raising=False)
+        monkeypatch.setattr(requests, "get", lambda *args, **kwargs: FakeResponse())
+        monkeypatch.setattr(webhook_server, "fetch_yahoo_history", lambda symbol, interval, limit: [
+            {"close": 200.0, "high": 202.0, "low": 198.0, "volume": 40_000_000},
+            {"close": 210.0, "high": 212.0, "low": 205.0, "volume": 50_000_000},
+        ])
+        
+        client = TestClient(webhook_server.app)
+        response = client.get("/webhooks/price/AAPL?asset_class=us_equity")
+        
+        assert response.status_code == 200
+        body = response.json()
+        assert body["price"] == 210.0
+        assert body["change_24h"] == 5.0
+        assert body["source"] == "yahoo_finance"
+        assert body["total_volume"] == 50_000_000
+
+
+class TestStrategyEngine:
+    """多资产策略引擎测试"""
+    
+    def test_waits_when_history_is_insufficient(self):
+        """历史样本不足时必须拒绝给方向"""
+        from src.strategy_engine import MultiAssetStrategyEngine
+        
+        rows = [
+            {"open": 100, "high": 101, "low": 99, "close": 100, "volume": 1000}
+            for _ in range(20)
+        ]
+        signal = MultiAssetStrategyEngine().generate_signal(rows, "BTCUSDT", "crypto")
+        
+        assert signal["action"] == "WAIT_CONFIRMATION"
+        assert signal["position_risk_pct"] == 0.0
+    
+    def test_crypto_trend_signal_is_conservative(self):
+        """趋势充分但仍输出谨慎信号和风控参数"""
+        from src.strategy_engine import MultiAssetStrategyEngine
+        
+        rows = []
+        price = 100.0
+        for i in range(140):
+            price *= 1.003
+            rows.append({
+                "open": price * 0.995,
+                "high": price * 1.01,
+                "low": price * 0.99,
+                "close": price,
+                "volume": 1000 + i * 8,
+            })
+        
+        signal = MultiAssetStrategyEngine().generate_signal(rows, "BTCUSDT", "crypto")
+        
+        assert signal["action"] in {"CAUTIOUS_LONG", "WAIT_CONFIRMATION"}
+        assert "不是投资建议" in signal["disclaimer"]
+        if signal["action"] == "CAUTIOUS_LONG":
+            assert signal["stop_loss"] < rows[-1]["close"]
+            assert signal["take_profit"] > rows[-1]["close"]
+    
+    def test_strategy_endpoint_supports_us_equity(self, monkeypatch):
+        """策略接口支持美股资产类别，且不依赖外部网络"""
+        from fastapi.testclient import TestClient
+        import src.webhook_server as webhook_server
+        
+        rows = []
+        price = 100.0
+        for i in range(120):
+            price *= 1.001
+            rows.append({
+                "time": f"2024-01-{(i % 28) + 1:02d}T00:00:00",
+                "open": price * 0.998,
+                "high": price * 1.006,
+                "low": price * 0.994,
+                "close": price,
+                "volume": 1_000_000 + i * 10_000,
+            })
+        
+        async def fake_load_history_rows(symbol, interval, limit):
+            assert symbol == "AAPL"
+            assert interval == "1d"
+            return {
+                "symbol": symbol,
+                "interval": interval,
+                "count": len(rows),
+                "data": rows,
+                "source": "unit_test",
+            }
+        
+        monkeypatch.setattr(webhook_server, "load_history_rows", fake_load_history_rows)
+        client = TestClient(webhook_server.app)
+        
+        response = client.get("/webhooks/strategy_signal/AAPL?asset_class=us_equity&interval=1d&limit=120")
+        
+        assert response.status_code == 200
+        body = response.json()
+        assert body["symbol"] == "AAPL"
+        assert body["asset_class"] == "us_equity"
+        assert body["data_source"] == "unit_test"
+        assert body["action"] in {"CAUTIOUS_LONG", "RISK_OFF", "WAIT_CONFIRMATION"}
 
 
 if __name__ == "__main__":

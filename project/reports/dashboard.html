@@ -128,6 +128,9 @@
                     <button onclick="selectChain('ethereum')" id="btn-eth" class="chain-btn px-4 py-2 rounded-lg font-bold text-white chain-eth">
                         ⚫ ETH
                     </button>
+                    <button onclick="selectChain('us_stock')" id="btn-us-stock" class="chain-btn px-4 py-2 rounded-lg font-bold text-white bg-slate-700">
+                        🇺🇸 美股
+                    </button>
                 </div>
                 
                 <!-- Token / Contract Input -->
@@ -230,6 +233,20 @@
             <div id="signal-reasoning" class="mt-4 text-sm text-gray-400 leading-6 border-t border-slate-700 pt-4">
                 等待历史 K 线数据确认。
             </div>
+            <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm border-t border-slate-700 pt-4">
+                <div>
+                    <div class="text-gray-500 text-xs uppercase">单笔风险</div>
+                    <div id="signal-risk" class="text-white font-bold mt-1">-</div>
+                </div>
+                <div>
+                    <div class="text-gray-500 text-xs uppercase">失效位</div>
+                    <div id="signal-stop" class="text-red-300 font-bold mt-1">-</div>
+                </div>
+                <div>
+                    <div class="text-gray-500 text-xs uppercase">目标位</div>
+                    <div id="signal-target" class="text-green-300 font-bold mt-1">-</div>
+                </div>
+            </div>
         </div>
 
         <!-- Indicators -->
@@ -270,7 +287,8 @@
             solana: ['SOL', 'BONK', 'WIF', 'POPCAT', 'FWOG', 'PNUT', 'GOAT', 'SLERF', 'MEW'],
             bsc: ['BNB', 'PEPE', 'SHIB', 'DOGE', 'CAKE', 'HIGH', 'BSW', 'BUSD'],
             base: ['BRETT', 'cbBTC', 'DEGEN', 'MUBI', 'HOURS', 'DOLS', 'Based', 'FOREST'],
-            ethereum: ['BTC', 'ETH', 'ARB', 'OP', 'MATIC', 'AVAX', 'LINK', 'UNI']
+            ethereum: ['BTC', 'ETH', 'ARB', 'OP', 'MATIC', 'AVAX', 'LINK', 'UNI'],
+            us_stock: ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'META', 'GOOGL', 'SPY']
         };
 
         const indicators = [
@@ -292,6 +310,9 @@
             if (!window.location.origin || window.location.origin === 'null' || window.location.protocol === 'file:') {
                 return 'http://localhost:10000';
             }
+            if (['localhost', '127.0.0.1', '::1'].includes(window.location.hostname) && window.location.port !== '10000') {
+                return `${window.location.protocol}//${window.location.hostname}:10000`;
+            }
             return window.location.origin;
         }
 
@@ -300,6 +321,7 @@
             if (!trimmed) return '';
             if (/^0x[a-fA-F0-9]{40}$/.test(trimmed)) return trimmed;
             const upper = trimmed.toUpperCase();
+            if (isUsStockSymbol(upper)) return upper;
             if (upper.endsWith('USDT') || upper.endsWith('USD')) return upper;
             return upper;
         }
@@ -308,9 +330,15 @@
             const raw = (priceData.symbol || input || '').trim();
             if (/^0x[a-fA-F0-9]{40}$/.test(raw)) return '';
             const upper = raw.toUpperCase();
+            if (isUsStockSymbol(upper)) return upper;
             if (upper.endsWith('USDT')) return upper;
             if (upper.endsWith('USD')) return upper.replace(/USD$/, 'USDT');
             return `${upper}USDT`;
+        }
+
+        function isUsStockSymbol(symbol) {
+            const upper = String(symbol || '').toUpperCase();
+            return currentChain === 'us_stock' || popularTokens.us_stock.includes(upper);
         }
 
         function formatPrice(price) {
@@ -346,7 +374,8 @@
                 solana: 'SOL 或 Solana 地址...',
                 bsc: 'PEPE 或 BSC 合约...',
                 base: 'BRETT 或 Base 合约...',
-                ethereum: 'ETH 或 ETH 合约...'
+                ethereum: 'ETH 或 ETH 合约...',
+                us_stock: 'AAPL / MSFT / NVDA / SPY...'
             };
             document.getElementById('token-input').placeholder = placeholders[chain] || '';
             
@@ -371,7 +400,8 @@
             document.getElementById('status-dot').className = 'w-3 h-3 rounded-full bg-yellow-500';
             
             try {
-                const url = `${API_BASE}/webhooks/price/${encodeURIComponent(priceSymbol)}`;
+                const priceAssetClass = isUsStockSymbol(priceSymbol) ? 'us_equity' : 'crypto';
+                const url = `${API_BASE}/webhooks/price/${encodeURIComponent(priceSymbol)}?asset_class=${priceAssetClass}`;
                 const res = await fetch(url);
                 
                 if (!res.ok) {
@@ -470,90 +500,28 @@
             let historySource = '';
             
             try {
-                // 小时线优先使用Binance直连（实时数据）
-                // 其他周期优先使用本地接口
-                if (interval === '1h') {
-                    // 优先Binance直连
-                    try {
-                        const binanceUrl = `https://api.binance.com/api/v3/klines?symbol=${currentSymbol}&interval=${interval}&limit=${config.limit}`;
-                        const res = await fetch(binanceUrl, { timeout: 10 });
-                        if (res.ok) {
-                            const klines = await res.json();
-                            if (klines && klines.length > 0) {
-                                history = {
-                                    source: 'binance',
-                                    count: klines.length,
-                                    data: klines.map(k => ({
-                                        time: new Date(k[0]).toISOString(),
-                                        open: parseFloat(k[1]),
-                                        high: parseFloat(k[2]),
-                                        low: parseFloat(k[3]),
-                                        close: parseFloat(k[4]),
-                                        volume: parseFloat(k[5])
-                                    }))
-                                };
-                                historySource = 'Binance 直连（实时）';
-                            }
-                        }
-                    } catch (e) {
-                        console.error('[loadHistory] Binance 直连失败:', e.message);
-                    }
-                    
-                    // 如果Binance失败，尝试本地接口
-                    if (!history) {
-                        try {
-                            const localUrl = `${API_BASE}/webhooks/history/${encodeURIComponent(currentSymbol)}?interval=${interval}&limit=${config.limit}`;
-                            const res = await fetch(localUrl, { timeout: 15 });
-                            if (res.ok) {
-                                history = await res.json();
-                                historySource = history.source === 'binance' ? 'Binance（本地缓存）' : 'Yahoo Finance（备用）';
-                            }
-                        } catch (e) {
-                            console.error('[loadHistory] 本地接口失败:', e.message);
-                        }
-                    }
-                } else {
-                    // 日/周/月线优先本地接口
-                    try {
-                        const localUrl = `${API_BASE}/webhooks/history/${encodeURIComponent(currentSymbol)}?interval=${interval}&limit=${config.limit}`;
-                        const res = await fetch(localUrl, { timeout: 15 });
-                        if (res.ok) {
-                            history = await res.json();
-                            historySource = '本地接口';
-                        }
-                    } catch (e) {
-                        console.error('[loadHistory] 本地接口失败:', e.message);
-                    }
-                    
-                    // 备用Binance
-                    if (!history) {
-                        try {
-                            const binanceUrl = `https://api.binance.com/api/v3/klines?symbol=${currentSymbol}&interval=${interval}&limit=${config.limit}`;
-                            const res = await fetch(binanceUrl, { timeout: 10 });
-                            if (res.ok) {
-                                const klines = await res.json();
-                                history = {
-                                    source: 'binance',
-                                    count: klines.length,
-                                    data: klines.map(k => ({
-                                        time: new Date(k[0]).toISOString(),
-                                        open: parseFloat(k[1]),
-                                        high: parseFloat(k[2]),
-                                        low: parseFloat(k[3]),
-                                        close: parseFloat(k[4]),
-                                        volume: parseFloat(k[5])
-                                    }))
-                                };
-                                historySource = 'Binance（备用）';
-                            }
-                        } catch (e) {
-                            console.error('[loadHistory] Binance 备用失败:', e.message);
-                        }
-                    }
-                }
+                history = await fetchLocalHistory(currentSymbol, interval, config.limit);
+                historySource = history.source === 'binance' ? 'Binance（本地接口）' : 'Yahoo Finance（本地备用）';
                 
                 if (!history || !history.data || history.data.length === 0) {
+                    throw new Error('本地历史接口返回空数据');
+                }
+            } catch (localError) {
+                console.error('[loadHistory] 本地接口失败:', localError.message);
+                try {
+                    history = await fetchBinanceHistory(currentSymbol, interval, config.limit);
+                    historySource = 'Binance（浏览器备用）';
+                } catch (binanceError) {
+                    console.error('[loadHistory] Binance 备用失败:', binanceError.message);
+                    history = await fetchYahooHistory(currentSymbol, interval, config.limit);
+                    historySource = 'Yahoo Finance（浏览器备用）';
+                }
+            }
+
+            try {
+                if (!history || !history.data || history.data.length === 0) {
                     document.getElementById('chart-source').textContent = '⚠️ 暂无历史数据';
+                    resetSignalState('历史数据为空，拒绝给出交易方向。');
                     return;
                 }
                 
@@ -597,13 +565,65 @@
                     `数据来源: ${historySource || history.source || 'unknown'} | ${currentSymbol} ${config.label} | ${history.count} 根K线`;
                 const indicatorValues = calculateIndicators(rows);
                 updateIndicators(indicatorValues);
-                updateTradingSignal(indicatorValues, rows, interval);
+                await updateTradingSignal(indicatorValues, rows, interval);
                     
             } catch (e) {
                 console.error('[loadHistory] Error:', e);
                 document.getElementById('chart-source').textContent = '⚠️ 图表加载失败: ' + e.message;
                 resetSignalState('历史数据加载失败，拒绝给出交易方向。');
             }
+        }
+
+        async function fetchLocalHistory(symbol, interval, limit) {
+            const localUrl = `${API_BASE}/webhooks/history/${encodeURIComponent(symbol)}?interval=${encodeURIComponent(interval)}&limit=${limit}`;
+            const res = await fetch(localUrl);
+            if (!res.ok) throw new Error(`本地历史接口 HTTP ${res.status}`);
+            return res.json();
+        }
+
+        async function fetchBinanceHistory(symbol, interval, limit) {
+            const binanceUrl = `https://api.binance.com/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=${limit}`;
+            const res = await fetch(binanceUrl);
+            if (!res.ok) throw new Error(`Binance HTTP ${res.status}`);
+            const klines = await res.json();
+            return {
+                source: 'binance',
+                count: klines.length,
+                data: klines.map(k => ({
+                    time: new Date(k[0]).toISOString(),
+                    open: parseFloat(k[1]),
+                    high: parseFloat(k[2]),
+                    low: parseFloat(k[3]),
+                    close: parseFloat(k[4]),
+                    volume: parseFloat(k[5])
+                }))
+            };
+        }
+
+        async function fetchYahooHistory(symbol, interval, limit) {
+            const yahooSymbol = symbol.endsWith('USDT') ? symbol.replace('USDT', '-USD') : symbol;
+            const map = {
+                '1h': ['1h', '5d'],
+                '1d': ['1d', '1y'],
+                '1w': ['1wk', '5y'],
+                '1M': ['1mo', '10y']
+            };
+            const [yInterval, yRange] = map[interval] || map['1d'];
+            const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${yInterval}&range=${yRange}`);
+            if (!res.ok) throw new Error(`Yahoo HTTP ${res.status}`);
+            const payload = await res.json();
+            const result = payload.chart?.result?.[0];
+            const timestamps = result?.timestamp || [];
+            const quote = result?.indicators?.quote?.[0] || {};
+            const rows = timestamps.map((ts, i) => ({
+                time: new Date(ts * 1000).toISOString(),
+                open: quote.open?.[i],
+                high: quote.high?.[i],
+                low: quote.low?.[i],
+                close: quote.close?.[i],
+                volume: quote.volume?.[i] || 0
+            })).filter(r => [r.open, r.high, r.low, r.close].every(v => v !== null && v !== undefined)).slice(-limit);
+            return { source: 'yahoo_finance', count: rows.length, data: rows };
         }
 
         function setIntervalAndLoad(interval) {
@@ -636,15 +656,43 @@
             return values;
         }
 
-        function updateTradingSignal(values, rows, interval) {
+        async function updateTradingSignal(values, rows, interval) {
+            try {
+                const assetClass = isUsStockSymbol(currentSymbol) ? 'us_equity' : 'crypto';
+                const url = `${API_BASE}/webhooks/strategy_signal/${encodeURIComponent(currentSymbol)}?asset_class=${assetClass}&interval=${encodeURIComponent(interval)}&limit=${intervalConfig[interval]?.limit || 260}`;
+                const res = await fetch(url);
+                if (res.ok) {
+                    renderStrategySignal(await res.json());
+                    return;
+                }
+            } catch (e) {
+                console.error('[strategy_signal] 后端策略失败，使用本地保守兜底:', e.message);
+            }
+            
             const assessment = assessTradeSignal(values, rows, interval);
+            renderStrategySignal({
+                label: assessment.label,
+                class_name: assessment.className,
+                strength: assessment.strength,
+                confidence: assessment.confidence,
+                reasons: assessment.reasons
+            });
+        }
+
+        function renderStrategySignal(assessment) {
             document.getElementById('signal-strength').textContent = assessment.strength + '%';
             document.getElementById('signal-confidence').textContent = assessment.confidence + '%';
-            document.getElementById('signal-reasoning').innerHTML = assessment.reasons.map(reason => `• ${reason}`).join('<br>');
+            const reasons = Array.isArray(assessment.reasons) ? assessment.reasons : ['策略数据不足，等待确认。'];
+            document.getElementById('signal-reasoning').innerHTML = reasons.map(reason => `• ${escapeHtml(reason)}`).join('<br>');
+            document.getElementById('signal-risk').textContent = assessment.position_risk_pct
+                ? `${(assessment.position_risk_pct * 100).toFixed(2)}% 账户权益`
+                : '不建议开新仓';
+            document.getElementById('signal-stop').textContent = assessment.stop_loss ? formatPrice(assessment.stop_loss) : '-';
+            document.getElementById('signal-target').textContent = assessment.take_profit ? formatPrice(assessment.take_profit) : '-';
 
             const badge = document.getElementById('signal-badge');
             badge.textContent = assessment.label;
-            badge.className = `text-2xl font-bold px-4 py-2 rounded-lg inline-block ${assessment.className}`;
+            badge.className = `text-2xl font-bold px-4 py-2 rounded-lg inline-block ${assessment.class_name || assessment.className || 'signal-hold'}`;
         }
 
         function resetSignalState(message) {
@@ -654,6 +702,26 @@
             badge.textContent = '等待';
             badge.className = 'text-2xl font-bold px-4 py-2 rounded-lg inline-block signal-hold';
             document.getElementById('signal-reasoning').textContent = message;
+            document.getElementById('signal-risk').textContent = '-';
+            document.getElementById('signal-stop').textContent = '-';
+            document.getElementById('signal-target').textContent = '-';
+        }
+
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function formatPrice(value) {
+            const price = Number(value);
+            if (!Number.isFinite(price)) return '-';
+            if (price >= 1000) return `$${price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+            if (price >= 1) return `$${price.toLocaleString(undefined, { maximumFractionDigits: 4 })}`;
+            return `$${price.toPrecision(4)}`;
         }
 
         function calculateIndicators(rows) {
@@ -949,6 +1017,8 @@
         window.addEventListener('load', async () => {
             // 初始化链选择
             selectChain('ethereum');
+            document.getElementById('token-input').value = 'BTC';
+            currentSymbol = 'BTCUSDT';
             
             // 延迟加载确保DOM就绪
             await new Promise(resolve => setTimeout(resolve, 300));

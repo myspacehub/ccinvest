@@ -463,10 +463,12 @@ async def webhook_orders(
 # =====================================================
 # 健康检查
 @app.get("/webhooks/price/{symbol}", tags=["市场"])
-async def webhook_price(symbol: str):
+async def webhook_price(symbol: str, asset_class: str = "auto"):
     """Webhook: 获取代币价格 (多源交叉验证)"""
     raw_symbol = symbol.strip()
     symbol = raw_symbol.upper()
+    base_symbol = symbol.replace("USDT", "").replace("USD", "")
+    resolved_asset_class = infer_asset_class(symbol, asset_class)
     import requests as req
     
     # 检测合约地址
@@ -533,6 +535,11 @@ async def webhook_price(symbol: str):
     _cache = getattr(webhook_price, '_cache', {})
     _cache_ttl = 60  # 缓存60秒
     _now = time.time()
+    _price_cache_key = f"price_{symbol}"
+    if _price_cache_key in _cache and _now - _cache[_price_cache_key].get("_timestamp", 0) < _cache_ttl:
+        cached_result = _cache[_price_cache_key].copy()
+        cached_result.pop("_timestamp", None)
+        return cached_result
     
     def get_market_data(cg_id: str) -> dict:
         """从 CoinGecko 获取市场详细数据，支持多端点重试"""
@@ -619,15 +626,15 @@ async def webhook_price(symbol: str):
         return {}
     
     # 使用优化的价格获取模块
-    if HAS_PRICE_FETCHER:
-        price_data = get_price_with_fallback(symbol)
-        market_data = get_market_data_with_fallback(symbol)
+    if HAS_PRICE_FETCHER and resolved_asset_class != "us_equity":
+        price_data = get_price_with_fallback(base_symbol)
+        market_data = get_market_data_with_fallback(base_symbol)
         
         if price_data and price_data.get('price', 0) > 0:
             # 优先使用 market_data，否则使用 price_data 中的数据
             market_cap = market_data.get('market_cap', 0) or price_data.get('market_cap', 0)
             return {
-                "symbol": symbol.replace("USDT", ""),
+                "symbol": base_symbol,
                 "price": price_data.get("price", 0),
                 "change_24h": price_data.get("change_24h", 0),
                 "price_usd": price_data.get("price", 0),
@@ -719,6 +726,84 @@ async def webhook_price(symbol: str):
                     sources_info.append({"source": "yahoo", "price": p, "change_24h": c})
         except Exception as e:
             logger.debug(f"Yahoo 失败: {e}")
+    elif resolved_asset_class == "us_equity":
+        try:
+            r = req.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=5d", timeout=10)
+            if r.ok:
+                d = r.json()
+                result = d.get("chart", {}).get("result", [])
+                if result:
+                    meta = result[0].get("meta", {})
+                    quote = result[0].get("indicators", {}).get("quote", [{}])[0]
+                    closes = [v for v in quote.get("close", []) if v is not None]
+                    highs = [v for v in quote.get("high", []) if v is not None]
+                    lows = [v for v in quote.get("low", []) if v is not None]
+                    volumes = [v for v in quote.get("volume", []) if v is not None]
+                    p = meta.get("regularMarketPrice") or (closes[-1] if closes else None)
+                    if p:
+                        previous_close = meta.get("previousClose") or meta.get("chartPreviousClose")
+                        if not previous_close and len(closes) >= 2:
+                            previous_close = closes[-2]
+                        previous_close = previous_close or p
+                        c = ((p - previous_close) / previous_close * 100) if previous_close else 0
+                        prices["yahoo"] = float(p)
+                        market_data.update({
+                            "name": meta.get("longName") or meta.get("shortName") or symbol,
+                            "symbol": symbol,
+                            "total_volume": meta.get("regularMarketVolume", 0) or (volumes[-1] if volumes else 0),
+                            "high_24h": meta.get("regularMarketDayHigh", 0) or (highs[-1] if highs else 0),
+                            "low_24h": meta.get("regularMarketDayLow", 0) or (lows[-1] if lows else 0),
+                            "change_24h": c,
+                        })
+                        sources_info.append({"source": "yahoo_equity", "price": float(p), "change_24h": c})
+        except Exception as e:
+            logger.debug(f"Yahoo equity 失败: {e}")
+        
+        if not prices:
+            rows = fetch_yahoo_history(symbol, "1d", 30)
+            if rows:
+                last = rows[-1]
+                previous = rows[-2] if len(rows) >= 2 else last
+                p = float(last["close"])
+                previous_close = float(previous["close"]) or p
+                c = ((p - previous_close) / previous_close * 100) if previous_close else 0
+                prices["yahoo"] = p
+                market_data.update({
+                    "name": symbol,
+                    "symbol": symbol,
+                    "total_volume": last.get("volume", 0) or 0,
+                    "high_24h": last.get("high", 0) or 0,
+                    "low_24h": last.get("low", 0) or 0,
+                    "change_24h": c,
+                })
+                sources_info.append({"source": "yahoo_equity_history", "price": p, "change_24h": c})
+        
+        if not prices:
+            raise HTTPException(status_code=404, detail="Yahoo Finance 美股数据不可用")
+        
+        result = {
+            "symbol": symbol,
+            "price": round(prices["yahoo"], 6),
+            "change_24h": round(market_data.get("change_24h", 0), 2),
+            "price_usd": round(prices["yahoo"], 6),
+            "price_diff_pct": 0,
+            "is_consistent": True,
+            "sources": sources_info,
+            "source": "yahoo_finance",
+            "is_contract": False,
+            "market_cap": market_data.get("market_cap", 0),
+            "market_cap_rank": market_data.get("market_cap_rank", 0),
+            "total_volume": market_data.get("total_volume", 0),
+            "high_24h": market_data.get("high_24h", 0),
+            "low_24h": market_data.get("low_24h", 0),
+            "name": market_data.get("name", symbol),
+            "image": "",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        _cache[_price_cache_key] = result.copy()
+        _cache[_price_cache_key]["_timestamp"] = _now
+        webhook_price._cache = _cache
+        return result
     
     # 源3: DexScreener 搜索 (带价格合理性过滤)
     try:
@@ -905,8 +990,9 @@ async def webhook_price(symbol: str):
     }
     
     # 缓存结果
-    webhook_price._global_cache[cache_key] = result.copy()
-    webhook_price._global_cache[cache_key]["_timestamp"] = _now
+    _cache[_price_cache_key] = result.copy()
+    _cache[_price_cache_key]["_timestamp"] = _now
+    webhook_price._cache = _cache
     
     return result
 
@@ -1005,7 +1091,7 @@ def fetch_yahoo_history(symbol: str, interval: str, limit: int) -> List[Dict[str
     }
     yahoo_symbol = symbol_map.get(symbol, symbol.replace("USDT", "-USD"))
     interval_map = {
-        "1h": ("1h", "1d"),
+        "1h": ("1h", "5d"),
         "1d": ("1d", "1y"),
         "1w": ("1wk", "5y"),
         "1M": ("1mo", "10y"),
@@ -1039,6 +1125,8 @@ def fetch_yahoo_history(symbol: str, interval: str, limit: int) -> List[Dict[str
                 volume = quote.get("volume", [])[index]
                 if None in (open_price, high_price, low_price, close_price):
                     continue
+                if interval == "1h" and not volume:
+                    continue
                 
                 rows.append({
                     "time": datetime.utcfromtimestamp(timestamp).isoformat(),
@@ -1055,6 +1143,114 @@ def fetch_yahoo_history(symbol: str, interval: str, limit: int) -> List[Dict[str
     except Exception as e:
         logger.warning(f"Yahoo Finance 历史数据失败: {e}")
         return []
+
+
+async def load_history_rows(symbol: str, interval: str, limit: int) -> Dict:
+    """Load OHLC rows from Binance first, Yahoo Finance as fallback."""
+    from src.collector import DataCollector
+    
+    normalized_symbol = symbol.upper()
+    collector = DataCollector()
+    data = []
+    validation = None
+    
+    try:
+        data, validation = collector.fetch_ohlc(
+            symbol=normalized_symbol,
+            interval=interval,
+            limit=limit
+        )
+        if data:
+            collector.save_ohlc_data(data)
+            return {
+                "symbol": normalized_symbol,
+                "interval": interval,
+                "count": len(data),
+                "validation": validation.to_dict() if validation else None,
+                "data": [
+                    {
+                        "time": item["open_time"].isoformat(),
+                        "open": item["open_price"],
+                        "high": item["high_price"],
+                        "low": item["low_price"],
+                        "close": item["close_price"],
+                        "volume": item["volume"],
+                    }
+                    for item in data
+                ],
+                "source": "binance",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+    except Exception as e:
+        logger.warning(f"Binance 获取 K 线失败: {e}")
+    
+    yahoo_data = fetch_yahoo_history(normalized_symbol, interval, limit)
+    if not yahoo_data:
+        raise HTTPException(status_code=404, detail="所有数据源均不可用")
+    
+    return {
+        "symbol": normalized_symbol,
+        "interval": interval,
+        "count": len(yahoo_data),
+        "validation": {
+            "is_valid": True,
+            "quality": "good",
+            "score": 80,
+            "issues": [],
+            "warnings": ["Binance 不可用，已切换到 Yahoo Finance"]
+        },
+        "data": yahoo_data,
+        "source": "yahoo_finance",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+def infer_asset_class(symbol: str, asset_class: str) -> str:
+    """Infer asset class when caller passes auto."""
+    requested = (asset_class or "auto").lower()
+    if requested in {"crypto", "us_equity"}:
+        return requested
+    crypto_symbols = {
+        "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "DOT",
+        "AVAX", "LINK", "MATIC", "UNI", "LTC", "ATOM", "FIL",
+        "APT", "ARB", "OP", "PEPE", "SHIB", "BONK", "NEAR"
+    }
+    normalized = symbol.upper().replace("USDT", "").replace("USD", "")
+    return "crypto" if symbol.upper().endswith("USDT") or normalized in crypto_symbols else "us_equity"
+
+
+@app.get("/webhooks/strategy_signal/{symbol}", tags=["策略"])
+async def webhook_strategy_signal(
+    symbol: str,
+    asset_class: str = "auto",
+    interval: str = "1d",
+    limit: int = 260
+):
+    """Webhook: 多资产高端策略信号，支持加密货币和美股。"""
+    allowed_intervals = {"1h", "1d", "1w", "1M"}
+    if interval not in allowed_intervals:
+        raise HTTPException(status_code=400, detail="interval 仅支持 1h、1d、1w、1M")
+    
+    resolved_asset_class = infer_asset_class(symbol, asset_class)
+    normalized_symbol = symbol.upper()
+    if resolved_asset_class == "crypto" and not normalized_symbol.endswith("USDT"):
+        normalized_symbol = f"{normalized_symbol.replace('USD', '')}USDT"
+    
+    history = await load_history_rows(normalized_symbol, interval, max(120, min(limit, 1000)))
+    
+    from src.strategy_engine import MultiAssetStrategyEngine
+    
+    engine = MultiAssetStrategyEngine()
+    signal = engine.generate_signal(
+        history["data"],
+        symbol=normalized_symbol,
+        asset_class=resolved_asset_class,
+        interval=interval
+    )
+    signal["data_source"] = history["source"]
+    signal["bars"] = history["count"]
+    signal["timestamp"] = datetime.utcnow().isoformat()
+    return signal
 
 
 # =====================================================
