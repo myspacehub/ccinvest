@@ -6,7 +6,7 @@ services:
     region: singapore
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: cd project && python main.py webhook
+    startCommand: cd project && uvicorn src.webhook_server:app --host 0.0.0.0 --port ${PORT:-10000}
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
