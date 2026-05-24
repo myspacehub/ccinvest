@@ -185,6 +185,15 @@ async def dashboard_index():
         </body></html>
     """)
 
+@app.get("/reports/dashboard", tags=["前端"])
+@app.get("/reports/dashboard.html", tags=["前端"])
+async def reports_dashboard():
+    """Reports Dashboard 页面"""
+    dashboard_path = reports_dir / "dashboard.html"
+    if dashboard_path.exists():
+        return FileResponse(str(dashboard_path))
+    raise HTTPException(status_code=404, detail="Dashboard not found")
+
 @app.get("/dashboard", tags=["前端"])
 async def dashboard():
     """Dashboard 页面"""
