@@ -1112,7 +1112,7 @@ def fetch_yahoo_history(symbol: str, interval: str, limit: int) -> List[Dict[str
             f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}",
             params={"interval": yahoo_interval, "range": range_value},
             headers={"User-Agent": "Mozilla/5.0"},
-            timeout=10
+            timeout=5
         )
         response.raise_for_status()
         payload = response.json()

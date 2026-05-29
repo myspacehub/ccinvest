@@ -510,7 +510,6 @@ class DataCollector:
         
         return results
     
-    @retry_on_failure(max_attempts=3, delay=1, backoff=2)
     def fetch_ohlc(self, symbol: str = "BTCUSDT", interval: str = "1h", 
                    limit: int = 500) -> Tuple[List[Dict], DataValidationResult]:
         """获取 K 线数据（带验证）"""
@@ -522,7 +521,7 @@ class DataCollector:
                 "limit": limit
             }
             
-            response = requests.get(url, params=params, timeout=10)
+            response = requests.get(url, params=params, timeout=3)
             response.raise_for_status()
             klines = response.json()
             if not klines:
