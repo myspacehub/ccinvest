@@ -409,7 +409,10 @@
                 }
                 
                 const d = await res.json();
-                currentSymbol = normalizeHistorySymbol(input, d);
+                console.log('[API Response] d.symbol:', d.symbol, '| input:', input);
+                const histSymbol = normalizeHistorySymbol(input, d);
+                console.log('[loadTokenData] histSymbol:', histSymbol, '| currentSymbol:', currentSymbol);
+                currentSymbol = histSymbol;
                 
                 // 更新主价格显示
                 const price = d.price || d.price_usd || 0;
@@ -451,9 +454,8 @@
                 
                 // 加载历史图表
                 if (currentSymbol) {
-                    const histSymbol = normalizeHistorySymbol(input, d);
-                    if (histSymbol) {
-                        await loadHistory(currentInterval, histSymbol);
+                    console.log('[loadTokenData] Calling loadHistory with symbol:', currentSymbol);
+                    await loadHistory(currentInterval, currentSymbol);
                     } else {
                         document.getElementById('chart-source').textContent = '合约地址暂不支持交易所历史 K 线';
                     }
@@ -500,11 +502,14 @@
 
         // ==================== 历史图表 ====================
         async function loadHistory(interval = '1h', symbol = currentSymbol) {
+            console.log('[loadHistory] Called with symbol:', symbol, '| interval:', interval);
             const config = intervalConfig[interval] || intervalConfig['1d'];
             let history = null;
             let historySource = '';
             
             try {
+                const url = `${API_BASE}/webhooks/history/${encodeURIComponent(symbol)}?interval=${encodeURIComponent(interval)}&limit=${config.limit}`;
+                console.log('[loadHistory] Fetching URL:', url);
                 history = await fetchLocalHistory(symbol, interval, config.limit);
                 historySource = history.source === 'binance' ? 'Binance（本地接口）' : 'Yahoo Finance（本地备用）';
                 
