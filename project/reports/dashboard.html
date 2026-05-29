@@ -514,11 +514,11 @@
             } catch (localError) {
                 console.error('[loadHistory] 本地接口失败:', localError.message);
                 try {
-                    history = await fetchBinanceHistory(currentSymbol, interval, config.limit);
+                    history = await fetchBinanceHistory(symbol, interval, config.limit);
                     historySource = 'Binance（浏览器备用）';
                 } catch (binanceError) {
                     console.error('[loadHistory] Binance 备用失败:', binanceError.message);
-                    history = await fetchYahooHistory(currentSymbol, interval, config.limit);
+                    history = await fetchYahooHistory(symbol, interval, config.limit);
                     historySource = 'Yahoo Finance（浏览器备用）';
                 }
             }
