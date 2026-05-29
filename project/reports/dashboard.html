@@ -532,6 +532,9 @@
                 if (!history || !history.data || history.data.length === 0) {
                     document.getElementById('chart-source').textContent = '⚠️ 暂无历史数据';
                     resetSignalState('历史数据为空，拒绝给出交易方向。');
+                    // 清除旧图表
+                    Plotly.purge('price-chart');
+                    document.getElementById('price-chart').innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">暂无数据</div>';
                     return;
                 }
                 
@@ -581,6 +584,9 @@
                 console.error('[loadHistory] Error:', e);
                 document.getElementById('chart-source').textContent = '⚠️ 图表加载失败: ' + e.message;
                 resetSignalState('历史数据加载失败，拒绝给出交易方向。');
+                // 清除旧图表
+                Plotly.purge('price-chart');
+                document.getElementById('price-chart').innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">数据加载失败</div>';
             }
         }
 
