@@ -342,11 +342,11 @@
         }
 
         function formatPrice(price) {
-            if (!price && price !== 0) return '-';
-            price = parseFloat(price);
-            if (price >= 1000) return '$' + price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            if (price >= 1) return '$' + price.toFixed(4);
-            return '$' + price.toFixed(8);
+            const p = Number(price);
+            if (!Number.isFinite(p)) return '-';
+            if (p >= 1000) return `$${p.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+            if (p >= 1) return `$${p.toLocaleString(undefined, { maximumFractionDigits: 4 })}`;
+            return `$${p.toPrecision(4)}`;
         }
 
         function formatLargeNum(num) {
@@ -450,17 +450,17 @@
                 // 显示API响应
                 document.getElementById('api-response').textContent = JSON.stringify(d, null, 2);
                 
-                resetSignalState('等待历史 K 线数据确认。');
+                // 重置交易信号状态
+                resetSignalState('正在加载历史 K 线数据...');
                 
                 // 加载历史图表
-                if (currentSymbol) {
-                    console.log('[loadTokenData] Calling loadHistory with symbol:', currentSymbol);
-                    await loadHistory(currentInterval, currentSymbol);
-                    } else {
-                        document.getElementById('chart-source').textContent = '合约地址暂不支持交易所历史 K 线';
-                    }
+                if (histSymbol) {
+                    console.log('[loadTokenData] Calling loadHistory with symbol:', histSymbol);
+                    await loadHistory(currentInterval, histSymbol);
                 } else {
-                    document.getElementById('chart-source').textContent = '合约地址暂不支持交易所历史 K 线';
+                    document.getElementById('chart-source').textContent = '⚠️ 合约地址暂不支持历史 K 线';
+                    Plotly.purge('price-chart');
+                    document.getElementById('price-chart').innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">合约地址暂不支持</div>';
                 }
                 
             } catch (e) {
@@ -617,7 +617,14 @@
         }
 
         async function fetchYahooHistory(symbol, interval, limit) {
-            const yahooSymbol = symbol.endsWith('USDT') ? symbol.replace('USDT', '-USD') : symbol;
+            // 美股符号保持原样，其他加密货币转换
+            const isUsStock = isUsStockSymbol(symbol);
+            let yahooSymbol;
+            if (isUsStock) {
+                yahooSymbol = symbol;
+            } else {
+                yahooSymbol = symbol.endsWith('USDT') ? symbol.replace('USDT', '-USD') : symbol + '-USD';
+            }
             const map = {
                 '1h': ['1h', '5d'],
                 '1d': ['1d', '1y'],
@@ -734,13 +741,6 @@
                 .replace(/'/g, '&#039;');
         }
 
-        function formatPrice(value) {
-            const price = Number(value);
-            if (!Number.isFinite(price)) return '-';
-            if (price >= 1000) return `$${price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-            if (price >= 1) return `$${price.toLocaleString(undefined, { maximumFractionDigits: 4 })}`;
-            return `$${price.toPrecision(4)}`;
-        }
 
         function calculateIndicators(rows) {
             const closes = rows.map(r => Number(r.close));
