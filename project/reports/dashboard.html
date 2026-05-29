@@ -281,7 +281,7 @@
         const API_BASE = getApiBase();
         let currentChain = 'ethereum';
         let currentSymbol = 'BTCUSDT';
-        let currentInterval = '1d';
+        let currentInterval = '1h';
         
         const popularTokens = {
             solana: ['SOL', 'BONK', 'WIF', 'POPCAT', 'FWOG', 'PNUT', 'GOAT', 'SLERF', 'MEW'],
@@ -451,7 +451,12 @@
                 
                 // 加载历史图表
                 if (currentSymbol) {
-                    await loadHistory(currentInterval);
+                    const histSymbol = normalizeHistorySymbol(input, d);
+                    if (histSymbol) {
+                        await loadHistory(currentInterval, histSymbol);
+                    } else {
+                        document.getElementById('chart-source').textContent = '合约地址暂不支持交易所历史 K 线';
+                    }
                 } else {
                     document.getElementById('chart-source').textContent = '合约地址暂不支持交易所历史 K 线';
                 }
@@ -494,13 +499,13 @@
         }
 
         // ==================== 历史图表 ====================
-        async function loadHistory(interval = '1d') {
+        async function loadHistory(interval = '1h', symbol = currentSymbol) {
             const config = intervalConfig[interval] || intervalConfig['1d'];
             let history = null;
             let historySource = '';
             
             try {
-                history = await fetchLocalHistory(currentSymbol, interval, config.limit);
+                history = await fetchLocalHistory(symbol, interval, config.limit);
                 historySource = history.source === 'binance' ? 'Binance（本地接口）' : 'Yahoo Finance（本地备用）';
                 
                 if (!history || !history.data || history.data.length === 0) {
@@ -562,10 +567,10 @@
                 });
                 
                 document.getElementById('chart-source').textContent = 
-                    `数据来源: ${historySource || history.source || 'unknown'} | ${currentSymbol} ${config.label} | ${history.count} 根K线`;
+                    `数据来源: ${historySource || history.source || 'unknown'} | ${symbol} ${config.label} | ${history.count} 根K线`;
                 const indicatorValues = calculateIndicators(rows);
                 updateIndicators(indicatorValues);
-                await updateTradingSignal(indicatorValues, rows, interval);
+                await updateTradingSignal(indicatorValues, rows, interval, symbol);
                     
             } catch (e) {
                 console.error('[loadHistory] Error:', e);
@@ -629,7 +634,9 @@
         function setIntervalAndLoad(interval) {
             currentInterval = interval;
             setActiveInterval(interval);
-            loadHistory(interval);
+            if (currentSymbol) {
+                loadHistory(interval, currentSymbol);
+            }
         }
 
         function setActiveInterval(interval) {
@@ -656,10 +663,10 @@
             return values;
         }
 
-        async function updateTradingSignal(values, rows, interval) {
+        async function updateTradingSignal(values, rows, interval, symbol = currentSymbol) {
             try {
-                const assetClass = isUsStockSymbol(currentSymbol) ? 'us_equity' : 'crypto';
-                const url = `${API_BASE}/webhooks/strategy_signal/${encodeURIComponent(currentSymbol)}?asset_class=${assetClass}&interval=${encodeURIComponent(interval)}&limit=${intervalConfig[interval]?.limit || 260}`;
+                const assetClass = isUsStockSymbol(symbol) ? 'us_equity' : 'crypto';
+                const url = `${API_BASE}/webhooks/strategy_signal/${encodeURIComponent(symbol)}?asset_class=${assetClass}&interval=${encodeURIComponent(interval)}&limit=${intervalConfig[interval]?.limit || 260}`;
                 const res = await fetch(url);
                 if (res.ok) {
                     renderStrategySignal(await res.json());
@@ -1019,6 +1026,7 @@
             selectChain('ethereum');
             document.getElementById('token-input').value = 'BTC';
             currentSymbol = 'BTCUSDT';
+            setActiveInterval(currentInterval);
             
             // 延迟加载确保DOM就绪
             await new Promise(resolve => setTimeout(resolve, 300));
