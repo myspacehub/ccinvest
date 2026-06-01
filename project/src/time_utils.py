@@ -62,7 +62,7 @@ def to_utc_time(dt: datetime) -> datetime:
         datetime: UTC 时间
     """
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=SHANGHAI_TZ)
+        dt = dt.replace(tzinfo=UTC_TZ)
     return dt.astimezone(UTC_TZ)
 
 
@@ -95,7 +95,7 @@ def format_utc(dt: datetime, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
         str: 格式化的字符串
     """
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=SHANGHAI_TZ)
+        dt = dt.replace(tzinfo=UTC_TZ)
     utc_dt = dt.astimezone(UTC_TZ)
     return f"{utc_dt.strftime(fmt)} {UTC_TZ_NAME}"
 

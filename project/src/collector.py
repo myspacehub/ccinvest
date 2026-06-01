@@ -24,47 +24,6 @@ from dotenv import load_dotenv
 from loguru import logger
 from tqdm import tqdm
 
-def retry_on_failure(max_attempts=3, delay=1, backoff=2):
-    """API 调用重试装饰器"""
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            for attempt in range(max_attempts):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    if attempt < max_attempts - 1:
-                        import time
-                        wait_time = delay * (backoff ** attempt)
-                        logger.warning(f"{func.__name__} 失败，{wait_time}秒后重试 ({attempt+1}/{max_attempts})")
-                        time.sleep(wait_time)
-                    else:
-                        logger.error(f"{func.__name__} 多次失败: {e}")
-                        raise
-            return None
-        return wrapper
-    return decorator
-
-
-def retry_on_failure(max_attempts=3, delay=1, backoff=2):
-    """API 调用重试装饰器"""
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            for attempt in range(max_attempts):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    if attempt < max_attempts - 1:
-                        import time
-                        wait_time = delay * (backoff ** attempt)
-                        logger.warning(f"{func.__name__} 失败，{wait_time}秒后重试 ({attempt+1}/{max_attempts})")
-                        time.sleep(wait_time)
-                    else:
-                        logger.error(f"{func.__name__} 多次失败: {e}")
-                        raise
-            return None
-        return wrapper
-    return decorator
-
 
 # =====================================================
 # 数据验证模块（内嵌）

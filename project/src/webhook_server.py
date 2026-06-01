@@ -16,6 +16,15 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, Depends, Header, Body
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+
+class HTMLResponse(JSONResponse):
+
+    def __init__(self, content: str, status_code: int = 200):
+
+        super().__init__(content=content, status_code=status_code, media_type="text/html")
+
+
+
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from loguru import logger
@@ -203,10 +212,6 @@ async def dashboard():
     raise HTTPException(status_code=404, detail="Dashboard not found")
 
 # HTML 响应类
-class HTMLResponse(JSONResponse):
-    def __init__(self, content: str, status_code: int = 200):
-        super().__init__(content=content, status_code=status_code, media_type="text/html")
-
 # =====================================================
 # 辅助函数
 # =====================================================

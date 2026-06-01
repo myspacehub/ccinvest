@@ -1,18 +1,3 @@
-
-# 常量定义
-CIRCUIT_BREAKER_RESET_INTERVAL = 86400  # 24小时，单位秒
-WHALE_THRESHOLD_ETH = 100  # 巨鲸阈值（ETH数量）
-
-
-# 常量定义
-CIRCUIT_BREAKER_RESET_INTERVAL = 86400  # 24小时，单位秒
-WHALE_THRESHOLD_ETH = 100  # 巨鲸阈值（ETH数量）
-
-
-# 常量定义
-CIRCUIT_BREAKER_RESET_INTERVAL = 86400  # 24小时，单位秒
-WHALE_THRESHOLD_ETH = 100  # 巨鲸阈值（ETH数量）
-
 import requests
 # =====================================================
 # CC Invest - 风控断路器模块
