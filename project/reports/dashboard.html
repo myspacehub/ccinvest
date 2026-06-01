@@ -134,7 +134,7 @@
                     <button onclick="selectChain('ethereum')" id="btn-eth" class="chain-btn px-4 py-2 rounded-lg font-bold text-white chain-eth">
                         ⚫ ETH
                     </button>
-                    <button onclick="selectChain('us_stock')" id="btn-us-stock" class="chain-btn px-4 py-2 rounded-lg font-bold text-white bg-slate-700">
+                    <button onclick="switchToUsStock()" id="btn-us-stock" class="chain-btn px-4 py-2 rounded-lg font-bold text-white bg-slate-700">
                         🇺🇸 美股
                     </button>
                 </div>
@@ -159,11 +159,26 @@
             </div>
         </div>
 
-        <!-- ==================== 美股分析面板（默认隐藏）==================== -->
-        <div id="us-stock-analysis" class="hidden">
-            <!-- 报告类型切换 -->
+        <!-- ==================== 美股视图（查询或分析）==================== -->
+        <div id="us-stock-view" class="hidden">
+            <!-- 视图切换标签 -->
             <div class="flex gap-2 mb-4">
-                <button onclick="switchReportType('daily')" id="tab-daily" class="px-4 py-2 rounded-lg font-bold bg-slate-700 hover:bg-slate-600 text-white tab-active">
+                <button onclick="showUsStockQuery()" id="tab-query" class="px-4 py-2 rounded-lg font-bold bg-blue-600 text-white">
+                    📈 股票查询
+                </button>
+                <button onclick="showUsStockAnalysis('daily')" id="tab-analysis" class="px-4 py-2 rounded-lg font-bold bg-slate-700 hover:bg-slate-600 text-white">
+                    📊 分析报告
+                </button>
+            </div>
+            
+            <!-- 股票查询面板 -->
+            <div id="us-stock-query-panel"></div>
+            
+            <!-- 分析报告面板 -->
+            <div id="us-stock-analysis">
+                <!-- 报告类型切换 -->
+                <div class="flex gap-2 mb-4">
+                    <button onclick="switchReportType('daily')" id="tab-daily" class="px-4 py-2 rounded-lg font-bold bg-slate-700 hover:bg-slate-600 text-white tab-active">
                     📅 每日分析
                 </button>
                 <button onclick="switchReportType('weekly')" id="tab-weekly" class="px-4 py-2 rounded-lg font-bold bg-slate-700 hover:bg-slate-600 text-white">
@@ -273,6 +288,8 @@
         </div>
 
         <!-- ==================== 加密货币交易面板（默认显示）==================== -->
+        </div>
+
         <div id="crypto-panel">
             <!-- Account Cards -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -524,11 +541,10 @@
             const searchBtn = document.getElementById('search-btn');
             
             if (chain === 'us_stock') {
-                // 显示美股分析面板，隐藏加密货币面板
-                if (cryptoPanel) cryptoPanel.style.display = 'none';
-                if (analysisPanel) analysisPanel.classList.remove('hidden');
-                if (searchBtn) searchBtn.textContent = '📊 查看分析';
-                loadAnalysisReport();
+                // 显示美股查询视图
+                if (cryptoPanel) cryptoPanel.style.display = 'block';
+                if (analysisPanel) analysisPanel.classList.add('hidden');
+                if (searchBtn) searchBtn.textContent = '🔍 查询';
             } else {
                 // 显示加密货币面板，隐藏美股分析面板
                 if (cryptoPanel) cryptoPanel.style.display = 'block';
@@ -544,7 +560,9 @@
         // ==================== 美股分析功能 ====================
         function handleSearchAction() {
             if (currentChain === 'us_stock') {
-                loadAnalysisReport();
+                // 美股模式：查询股票数据
+                showUsStockQuery();
+                loadTokenData();
             } else {
                 loadTokenData();
             }
@@ -726,13 +744,79 @@
                 : risks.map(r => `<div>⚡ ${typeof r === 'string' ? r : r.message || r}</div>`).join('');
         }
 
+        
+
+        // ==================== 美股视图切换 ====================
+        function switchToUsStock() {
+            currentChain = 'us_stock';
+            document.getElementById('token-input').placeholder = '输入股票代码查询...';
+            
+            const tokens = popularTokens['us_stock'] || [];
+            document.getElementById('popular-tokens').innerHTML = tokens.map(t => 
+                `<button onclick="document.getElementById('token-input').value='${t}';switchToUsStock();loadTokenData();" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs">${t}</button>`
+            ).join('');
+            
+            // 显示美股视图
+            const cryptoPanel = document.getElementById('crypto-panel');
+            const usStockView = document.getElementById('us-stock-view');
+            if (cryptoPanel) cryptoPanel.style.display = 'none';
+            if (usStockView) usStockView.classList.remove('hidden');
+            
+            // 默认显示查询视图
+            showUsStockQuery();
+            
+            // 如果输入框有内容，加载数据
+            const inputVal = document.getElementById('token-input').value.trim();
+            if (inputVal) {
+                setTimeout(() => loadTokenData(), 100);
+            }
+        }
+
+        function showUsStockQuery() {
+            const queryPanel = document.getElementById('us-stock-query-panel');
+            const analysisPanel = document.getElementById('us-stock-analysis');
+            
+            if (queryPanel) queryPanel.style.display = 'block';
+            if (analysisPanel) analysisPanel.classList.add('hidden');
+            
+            document.getElementById('tab-query').className = 'px-4 py-2 rounded-lg font-bold bg-blue-600 text-white';
+            document.getElementById('tab-analysis').className = 'px-4 py-2 rounded-lg font-bold bg-slate-700 hover:bg-slate-600 text-white';
+            
+            // 显示加密货币面板用于查询
+            const cryptoPanel = document.getElementById('crypto-panel');
+            if (cryptoPanel) cryptoPanel.style.display = 'block';
+        }
+
+        function showUsStockAnalysis(reportType) {
+            const queryPanel = document.getElementById('us-stock-query-panel');
+            const analysisPanel = document.getElementById('us-stock-analysis');
+            
+            if (queryPanel) queryPanel.style.display = 'none';
+            if (analysisPanel) analysisPanel.classList.remove('hidden');
+            
+            document.getElementById('tab-query').className = 'px-4 py-2 rounded-lg font-bold bg-slate-700 hover:bg-slate-600 text-white';
+            document.getElementById('tab-analysis').className = 'px-4 py-2 rounded-lg font-bold bg-indigo-600 text-white';
+            
+            // 隐藏加密货币面板
+            const cryptoPanel = document.getElementById('crypto-panel');
+            if (cryptoPanel) cryptoPanel.style.display = 'none';
+            
+            // 设置报告类型并加载
+            if (reportType) {
+                switchReportType(reportType);
+            } else {
+                loadAnalysisReport();
+            }
+        }
+
         function queryStock(symbol) {
             document.getElementById('token-input').value = symbol;
-            selectChain('us_stock');
-            // 切换回加密货币面板查询股票价格
-            document.getElementById('crypto-panel').style.display = 'block';
-            document.getElementById('us-stock-analysis').classList.add('hidden');
-            loadTokenData();
+            // 切换到美股查询视图
+            switchToUsStock();
+            document.getElementById('tab-query').className = 'px-4 py-2 rounded-lg font-bold bg-blue-600 text-white';
+            document.getElementById('tab-analysis').className = 'px-4 py-2 rounded-lg font-bold bg-slate-700 hover:bg-slate-600 text-white';
+            // 加载股票数据
+            setTimeout(() => loadTokenData(), 100);
         }
 
         // ==================== 价格数据加载 ====================
