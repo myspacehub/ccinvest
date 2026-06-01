@@ -10,6 +10,7 @@ import json
 import time
 from datetime import datetime, timedelta, date
 from typing import Dict, List, Optional, Any
+from dataclasses import dataclass, field
 from zoneinfo import ZoneInfo
 
 from loguru import logger
