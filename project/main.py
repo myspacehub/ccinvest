@@ -430,6 +430,91 @@ def skills():
     console.print(table)
 
 @cli.command()
+@click.option('--symbol', '-s', default='AAPL', help='美股代码（如 AAPL, MSFT, NVDA）')
+@click.option('--scan', '-n', help='批量扫描（逗号分隔，如 AAPL,MSFT,NVDA）')
+@click.option('--deep', is_flag=True, help='深度分析（包含资金流和机构持仓）')
+@click.option('--json', '-j', is_flag=True, help='JSON 格式输出')
+def signal(symbol: str, scan: str, deep: bool, json: bool):
+    """📈 生成美股综合交易信号（技术+资金流+机构+估值）"""
+    console.print(Panel.fit(
+        f"[bold cyan]美股综合信号[/bold cyan]\n\n"
+        f"代码: {symbol}\n"
+        f"深度分析: {'是' if deep else '否'}",
+        title="信号分析"
+    ))
+    
+    from src.us_equity_signals import generate_us_equity_signal, scan_us_equities, signal_to_dict, format_signal_text
+    
+    if scan:
+        symbols = [s.strip() for s in scan.split(',')]
+        console.print(f"[cyan]批量扫描: {symbols}[/cyan]\n")
+        
+        results = scan_us_equities(symbols, fetch_deep=deep)
+        
+        table = Table(title="美股信号扫描结果")
+        table.add_column("代码", style="cyan")
+        table.add_column("信号", style="yellow")
+        table.add_column("综合评分", style="green")
+        table.add_column("技术", style="white")
+        table.add_column("资金流", style="white")
+        table.add_column("机构", style="white")
+        table.add_column("估值", style="white")
+        table.add_column("价格", style="white")
+        
+        signal_colors = {
+            "BUY": "green",
+            "SELL": "red",
+            "HOLD": "yellow",
+            "WAIT": "dim",
+        }
+        
+        for r in results:
+            color = signal_colors.get(r["signal"], "white")
+            scores = r["scores"]
+            table.add_row(
+                r["symbol"],
+                f"[{color}]{r['signal']}[/{color}]",
+                f"{r['composite_score']:.0f}",
+                f"{scores['technical']:.0f}",
+                f"{scores['flow']:.0f}",
+                f"{scores['institutional']:.0f}",
+                f"{scores['valuation']:.0f}",
+                f"${r['price']:,.2f}",
+            )
+        
+        console.print(table)
+        
+        # 买入信号
+        buys = [r for r in results if r["signal"] == "BUY"]
+        if buys:
+            console.print(f"\n[bold green]买入候选:[/bold green] {', '.join(r['symbol'] for r in buys)}")
+        
+    else:
+        sig = generate_us_equity_signal(symbol.upper(), fetch_deep=deep)
+        sig_dict = signal_to_dict(sig)
+        
+        if json:
+            import json as json_mod
+            console.print(json_mod.dumps(sig_dict, indent=2, ensure_ascii=False))
+        else:
+            text = format_signal_text(sig_dict)
+            for line in text.split('\n'):
+                if "BUY" in line or "SELL" in line:
+                    if "🎯" in line:
+                        console.print(f"[bold yellow]{line}[/bold yellow]")
+                    elif "信号:" in line:
+                        # Color the signal
+                        sig_label = sig_dict["signal"]
+                        color_map = {"BUY": "green", "SELL": "red", "HOLD": "yellow", "WAIT": "dim"}
+                        color = color_map.get(sig_label, "white")
+                        console.print(line.replace(f"[{sig_label}]", f"[{color}][bold]{sig_label}[/bold][/red]"))
+                    else:
+                        console.print(line)
+                else:
+                    console.print(line)
+
+
+@cli.command()
 @click.confirmation_option(prompt='确定要启动完整系统吗？')
 def start():
     """启动完整系统（数据采集 + 模拟交易 + Webhook）"""

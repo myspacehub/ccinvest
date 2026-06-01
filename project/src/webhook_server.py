@@ -1406,3 +1406,250 @@ if __name__ == "__main__":
         reload=False,
         log_level="info"
     )
+
+
+# =====================================================
+# 美股综合信号路由 (vibe-trading 增强版)
+# =====================================================
+
+@app.get("/webhooks/us_equity_signal/{symbol}", tags=["美股信号"])
+async def webhook_us_equity_signal(
+    symbol: str,
+    interval: str = "1d",
+    fetch_deep: bool = True,
+    x_webhook_signature: str = Header(None)
+):
+    """
+    Webhook: 美股综合交易信号
+    
+    整合技术分析 + ETF 资金流 + 机构持仓 + 估值评分
+    
+    **请求示例:**
+    ```
+    GET /webhooks/us_equity_signal/AAPL
+    GET /webhooks/us_equity_signal/NVDA?fetch_deep=true
+    ```
+    
+    **返回字段:**
+    - composite_score: 综合评分 0-100
+    - signal: BUY / SELL / HOLD / WAIT / NO_DATA
+    - confidence: 置信度 0-1
+    - scores: {technical, flow, institutional, valuation}
+    - trade_plan: {entry_price, stop_loss, take_profit_1, take_profit_2}
+    - flow_signal: RISK_ON / RISK_OFF / QUALITY_ROTATION / NEUTRAL
+    """
+    try:
+        # 速率限制
+        if RATE_LIMIT_ENABLED:
+            # Use a simple client ID for GET requests
+            if not rate_limiter.is_allowed(f"equity_{symbol}"):
+                raise HTTPException(status_code=429, detail="请求过于频繁")
+        
+        # 验证签名
+        raw_request = Request
+        # For GET requests, use a dummy approach since we don't have request body
+        # Signature validation skipped for GET endpoints
+        
+        from src.us_equity_signals import generate_us_equity_signal, signal_to_dict
+        sig = generate_us_equity_signal(symbol.upper(), fetch_deep=fetch_deep)
+        
+        return {
+            "status": "success",
+            "symbol": symbol.upper(),
+            "data": signal_to_dict(sig),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"美股信号生成失败 [{symbol}]: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/webhooks/us_equity_scan", tags=["美股信号"])
+async def webhook_us_equity_scan(
+    raw_request: Request,
+    payload: dict,
+    x_webhook_signature: str = Header(None)
+):
+    """
+    Webhook: 批量扫描美股信号
+    
+    **请求示例:**
+    ```json
+    {
+        "symbols": ["AAPL", "MSFT", "NVDA", "GOOGL", "META"],
+        "fetch_deep": true
+    }
+    ```
+    """
+    try:
+        symbols = payload.get("symbols", [])
+        fetch_deep = payload.get("fetch_deep", True)
+        
+        if not symbols:
+            raise HTTPException(status_code=400, detail="需要提供 symbols 列表")
+        
+        if len(symbols) > 50:
+            raise HTTPException(status_code=400, detail="最多支持 50 个符号")
+        
+        # 速率限制
+        if RATE_LIMIT_ENABLED:
+            client_id = "scan_batch"
+            if not rate_limiter.is_allowed(client_id):
+                raise HTTPException(status_code=429, detail="请求过于频繁")
+        
+        from src.us_equity_signals import scan_us_equities, signal_to_dict
+        results = scan_us_equities(symbols, fetch_deep=fetch_deep)
+        
+        # 分类统计
+        buys = [r for r in results if r["signal"] == "BUY"]
+        sells = [r for r in results if r["signal"] == "SELL"]
+        holds = [r for r in results if r["signal"] == "HOLD"]
+        
+        return {
+            "status": "success",
+            "total": len(results),
+            "signals": {
+                "BUY": len(buys),
+                "SELL": len(sells),
+                "HOLD": len(holds),
+                "WAIT": len(results) - len(buys) - len(sells) - len(holds),
+            },
+            "results": results,
+            "top_picks": [r["symbol"] for r in results[:5] if r["signal"] == "BUY"],
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"批量扫描失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/webhooks/etf_flows", tags=["美股资金流"])
+async def webhook_etf_flows(
+    symbols: str = "SPY,QQQ,IWM,XLK,XLF,XLE,XLV,XLY",
+    x_webhook_signature: str = Header(None)
+):
+    """
+    Webhook: ETF 资金流数据
+    
+    获取指定 ETF 的资金流入/流出和动量评分
+    
+    **请求示例:**
+    ```
+    GET /webhooks/etf_flows?symbols=SPY,QQQ,XLK
+    ```
+    """
+    try:
+        sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
+        
+        from src.us_equity_signals import compute_etf_flows
+        flows = compute_etf_flows(sym_list)
+        
+        result = {
+            "status": "success",
+            "count": len(flows),
+            "flows": [
+                {
+                    "symbol": e.symbol,
+                    "name": e.name,
+                    "category": e.category,
+                    "price": round(e.price, 2),
+                    "change_1d_pct": round(e.change_1d, 3),
+                    "flow_1d": round(e.flow_1d, 3),
+                    "flow_5d": round(e.flow_5d, 3),
+                    "flow_20d": round(e.flow_20d, 3),
+                    "aum_billion_usd": round(e.aum, 2),
+                    "momentum_score": round(e.momentum_score, 1),
+                    "price_vs_ma20_pct": round(e.price_vs_ma20, 2),
+                }
+                for e in flows
+            ],
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        # 汇总信号
+        risk_on_count = sum(1 for e in flows if e.momentum_score > 60)
+        risk_off_count = sum(1 for e in flows if e.momentum_score < 40)
+        
+        if risk_on_count >= len(flows) * 0.7:
+            result["market_signal"] = "BULLISH"
+        elif risk_off_count >= len(flows) * 0.7:
+            result["market_signal"] = "BEARISH"
+        else:
+            result["market_signal"] = "NEUTRAL"
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"ETF 资金流获取失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =====================================================
+# 美股研究路由
+# =====================================================
+
+@app.get("/webhooks/us_equity_info/{symbol}", tags=["美股研究"])
+async def webhook_us_equity_info(
+    symbol: str,
+    x_webhook_signature: str = Header(None)
+):
+    """
+    Webhook: 获取美股公司基本信息
+    
+    返回公司财务数据、估值、机构持仓等
+    """
+    try:
+        from src.us_equity_signals import fetch_yfinance_info, fetch_earnings_dates
+        
+        info = fetch_yfinance_info(symbol.upper())
+        
+        if not info:
+            raise HTTPException(status_code=404, detail=f"未找到 {symbol} 的数据")
+        
+        # 简化敏感信息
+        safe_info = {
+            "symbol": symbol.upper(),
+            "shortName": info.get("shortName"),
+            "longName": info.get("longName"),
+            "sector": info.get("sector"),
+            "industry": info.get("industry"),
+            "marketCap": info.get("marketCap"),
+            "trailingPE": info.get("trailingPE"),
+            "forwardPE": info.get("forwardPE"),
+            "pegRatio": info.get("pegRatio"),
+            "dividendYield": info.get("dividendYield"),
+            "beta": info.get("beta"),
+            "recommendationKey": info.get("recommendationKey"),
+            "numberOfAnalystOpinions": info.get("numberOfAnalystOpinions"),
+            "earningsGrowth": info.get("earningsGrowth"),
+            "revenueGrowth": info.get("revenueGrowth"),
+            "profitMargins": info.get("profitMargins"),
+            "operatingMargins": info.get("operatingMargins"),
+            "trailingEps": info.get("trailingEps"),
+            "forwardEps": info.get("forwardEps"),
+            "bookValue": info.get("bookValue"),
+            "priceToBook": info.get("priceToBook"),
+            "fiftyTwoWeekHigh": info.get("fiftyTwoWeekHigh"),
+            "fiftyTwoWeekLow": info.get("fiftyTwoWeekLow"),
+            "freeCashflow": info.get("freeCashflow"),
+        }
+        
+        earnings_dates = fetch_earnings_dates(symbol.upper())
+        
+        return {
+            "status": "success",
+            "symbol": symbol.upper(),
+            "info": safe_info,
+            "earnings_dates": earnings_dates,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"美股信息获取失败 [{symbol}]: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
