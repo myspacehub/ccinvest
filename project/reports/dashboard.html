@@ -23,7 +23,6 @@
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
         .chain-btn { transition: all 0.2s; }
         .chain-btn:hover { transform: scale(1.05); }
-        /* Loading spinner */
         .spinner {
             border: 3px solid #334155;
             border-top: 3px solid #3b82f6;
@@ -55,6 +54,13 @@
             opacity: 0;
             pointer-events: none;
         }
+        /* 美股分析面板样式 */
+        .analysis-section { border-left: 3px solid #6366f1; }
+        .market-bull { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); }
+        .market-bear { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+        .market-neutral { background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%); }
+        .tab-active { background: #6366f1 !important; }
+        .stock-card:hover { transform: translateY(-2px); border-color: #6366f1; }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-6">
@@ -72,7 +78,7 @@
                 <h1 class="text-3xl font-bold">
                     <span class="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">CC Invest</span>
                 </h1>
-                <p class="text-gray-400 text-sm mt-1">多链代币行情 & 合约查询</p>
+                <p class="text-gray-400 text-sm mt-1">多链代币行情 & 美股分析</p>
             </div>
             <div class="flex items-center gap-2">
                 <span id="status-dot" class="w-3 h-3 rounded-full bg-gray-500"></span>
@@ -134,145 +140,261 @@
                 </div>
                 
                 <!-- Token / Contract Input -->
-                <div class="flex-1">
+                <div class="flex-1" id="token-input-area">
                     <label class="text-gray-400 text-xs uppercase tracking-wide">代币符号 / 合约地址</label>
                     <input type="text" id="token-input" placeholder="输入代币或合约地址..." value="BTC"
                         class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 mt-1 text-white text-sm"
                         onkeypress="if(event.key==='Enter')loadTokenData()">
                 </div>
                 
-                <button onclick="loadTokenData()" class="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-bold transition">
+                <button onclick="handleSearchAction()" id="search-btn" class="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-bold transition">
                     🔍 查询
                 </button>
             </div>
             
             <!-- Popular Tokens -->
-            <div class="mt-4">
+            <div class="mt-4" id="popular-tokens-area">
                 <div class="text-gray-400 text-xs uppercase tracking-wide mb-2">快捷代币:</div>
                 <div class="flex flex-wrap gap-2" id="popular-tokens"></div>
             </div>
         </div>
 
-        <!-- Account Cards -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div class="card p-4">
-                <div class="text-gray-400 text-xs uppercase">账户余额</div>
-                <div class="text-2xl font-bold text-white mt-1" id="balance">$0.00</div>
+        <!-- ==================== 美股分析面板（默认隐藏）==================== -->
+        <div id="us-stock-analysis" class="hidden">
+            <!-- 报告类型切换 -->
+            <div class="flex gap-2 mb-4">
+                <button onclick="switchReportType('daily')" id="tab-daily" class="px-4 py-2 rounded-lg font-bold bg-slate-700 hover:bg-slate-600 text-white tab-active">
+                    📅 每日分析
+                </button>
+                <button onclick="switchReportType('weekly')" id="tab-weekly" class="px-4 py-2 rounded-lg font-bold bg-slate-700 hover:bg-slate-600 text-white">
+                    📆 每周分析
+                </button>
+                <button onclick="refreshAnalysis()" class="ml-4 px-4 py-2 rounded-lg font-bold bg-indigo-600 hover:bg-indigo-700 text-white">
+                    🔄 刷新
+                </button>
             </div>
-            <div class="card p-4">
-                <div class="text-gray-400 text-xs uppercase">总盈亏</div>
-                <div class="text-2xl font-bold mt-1" id="pnl">$0.00</div>
-            </div>
-            <div class="card p-4">
-                <div class="text-gray-400 text-xs uppercase">当前价格</div>
-                <div class="text-2xl font-bold text-white mt-1" id="current-price">-</div>
-            </div>
-            <div class="card p-4">
-                <div class="text-gray-400 text-xs uppercase">24h 涨跌</div>
-                <div class="text-2xl font-bold mt-1" id="price-change">-</div>
-            </div>
-        </div>
 
-        <!-- Token Info Card -->
-        <div class="card p-6 mb-6" id="token-info-card" style="display:none;">
-            <div class="flex flex-col md:flex-row gap-6">
-                <div class="flex items-center gap-4">
-                    <img id="token-image" src="" class="w-12 h-12 rounded-full" style="display:none;">
+            <!-- 加载状态 -->
+            <div id="analysis-loading" class="card p-8 text-center mb-4">
+                <div class="spinner mx-auto mb-4"></div>
+                <div class="text-gray-400">正在加载美股分析数据...</div>
+            </div>
+
+            <!-- 市场概览 -->
+            <div id="market-overview-section" class="card p-6 mb-4 analysis-section">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-xl font-bold">📊 市场概览</h2>
+                    <span id="report-period" class="text-sm text-gray-400">-</span>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    <div class="text-center p-3 bg-slate-800 rounded-lg">
+                        <div class="text-gray-400 text-xs uppercase">市场信号</div>
+                        <div id="market-signal" class="text-2xl font-bold mt-1 text-yellow-400">-</div>
+                    </div>
+                    <div class="text-center p-3 bg-slate-800 rounded-lg">
+                        <div class="text-gray-400 text-xs uppercase">市场广度</div>
+                        <div id="breadth-pct" class="text-2xl font-bold mt-1 text-white">-</div>
+                    </div>
+                    <div class="text-center p-3 bg-slate-800 rounded-lg">
+                        <div class="text-gray-400 text-xs uppercase">扫描股票</div>
+                        <div id="scan-count" class="text-2xl font-bold mt-1 text-white">-</div>
+                    </div>
+                    <div class="text-center p-3 bg-slate-800 rounded-lg">
+                        <div class="text-gray-400 text-xs uppercase">上涨/下跌</div>
+                        <div id="advance-decline" class="text-lg font-bold mt-1 text-green-400">-</div>
+                    </div>
+                </div>
+                <div id="macro-signal-area" class="p-3 bg-slate-800 rounded-lg">
+                    <span class="text-gray-400 text-sm">宏观信号: </span>
+                    <span id="macro-signal" class="text-sm font-bold text-blue-400">-</span>
+                </div>
+            </div>
+
+            <!-- 精选机会 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <!-- 强势买入 -->
+                <div class="card p-6 analysis-section">
+                    <h3 class="text-lg font-bold mb-3 text-green-400">🚀 强势买入</h3>
+                    <div id="strong-buys" class="space-y-2">
+                        <div class="text-gray-400 text-sm">加载中...</div>
+                    </div>
+                </div>
+                <!-- 买入候选 -->
+                <div class="card p-6 analysis-section">
+                    <h3 class="text-lg font-bold mb-3 text-blue-400">💎 买入候选</h3>
+                    <div id="buy-candidates" class="space-y-2">
+                        <div class="text-gray-400 text-sm">加载中...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 板块轮动 -->
+            <div class="card p-6 mb-4 analysis-section">
+                <h3 class="text-lg font-bold mb-3">📈 板块轮动</h3>
+                <div id="sector-ranking" class="space-y-2">
+                    <div class="text-gray-400 text-sm">加载中...</div>
+                </div>
+            </div>
+
+            <!-- 交易建议 -->
+            <div class="card p-6 mb-4 analysis-section">
+                <h3 class="text-lg font-bold mb-3">💰 交易建议</h3>
+                <div id="trade-recommendations" class="space-y-3">
+                    <div class="text-gray-400 text-sm">加载中...</div>
+                </div>
+            </div>
+
+            <!-- 财报日历 -->
+            <div class="card p-6 mb-4 analysis-section">
+                <h3 class="text-lg font-bold mb-3">📅 财报日历</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <div class="text-2xl font-bold" id="token-symbol-display">-</div>
-                        <div class="text-gray-400" id="token-name-display">-</div>
-                        <div class="text-xs text-gray-500 mt-1" id="token-chain">-</div>
+                        <div class="text-gray-400 text-sm mb-2">本周</div>
+                        <div id="earnings-this-week" class="space-y-2">
+                            <div class="text-gray-400 text-sm">-</div>
+                        </div>
                     </div>
-                </div>
-                <div class="flex-1 grid grid-cols-2 md:grid-cols-5 gap-4">
-                    <div class="text-center">
-                        <div class="text-gray-400 text-xs uppercase">市值</div>
-                        <div class="text-lg font-bold text-white" id="token-market-cap">-</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="text-gray-400 text-xs uppercase">排名</div>
-                        <div class="text-lg font-bold text-blue-400" id="token-rank">-</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="text-gray-400 text-xs uppercase">24h 成交量</div>
-                        <div class="text-lg font-bold text-white" id="token-volume">-</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="text-gray-400 text-xs uppercase">24h 高</div>
-                        <div class="text-lg font-bold text-green-400" id="token-high">-</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="text-gray-400 text-xs uppercase">24h 低</div>
-                        <div class="text-lg font-bold text-red-400" id="token-low">-</div>
+                    <div>
+                        <div class="text-gray-400 text-sm mb-2">下周</div>
+                        <div id="earnings-next-week" class="space-y-2">
+                            <div class="text-gray-400 text-sm">-</div>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="mt-4 pt-4 border-t border-slate-700">
-                <div class="text-xs text-gray-400">数据源: <span id="token-source" class="text-blue-400">-</span></div>
-                <div class="text-xs text-gray-400 mt-1">合约: <span id="token-contract" class="text-gray-300">-</span></div>
-            </div>
-        </div>
 
-        <!-- Signal Card -->
-        <div class="card p-6 mb-6">
-            <h2 class="text-xl font-bold mb-4">🎯 综合交易信号</h2>
-            <div class="grid grid-cols-3 gap-4">
-                <div class="text-center">
-                    <div class="text-gray-400 text-xs uppercase mb-2">信号强度</div>
-                    <div class="text-4xl font-bold" id="signal-strength">-</div>
-                </div>
-                <div class="text-center">
-                    <div class="text-gray-400 text-xs uppercase mb-2">置信度</div>
-                    <div class="text-4xl font-bold" id="signal-confidence">-</div>
-                </div>
-                <div class="text-center">
-                    <div class="text-gray-400 text-xs uppercase mb-2">建议操作</div>
-                    <div id="signal-badge" class="text-2xl font-bold px-4 py-2 rounded-lg inline-block">-</div>
-                </div>
-            </div>
-            <div id="signal-reasoning" class="mt-4 text-sm text-gray-400 leading-6 border-t border-slate-700 pt-4">
-                等待历史 K 线数据确认。
-            </div>
-            <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm border-t border-slate-700 pt-4">
-                <div>
-                    <div class="text-gray-500 text-xs uppercase">单笔风险</div>
-                    <div id="signal-risk" class="text-white font-bold mt-1">-</div>
-                </div>
-                <div>
-                    <div class="text-gray-500 text-xs uppercase">失效位</div>
-                    <div id="signal-stop" class="text-red-300 font-bold mt-1">-</div>
-                </div>
-                <div>
-                    <div class="text-gray-500 text-xs uppercase">目标位</div>
-                    <div id="signal-target" class="text-green-300 font-bold mt-1">-</div>
+            <!-- 风险警示 -->
+            <div class="card p-6 mb-4 border-l-4 border-red-500">
+                <h3 class="text-lg font-bold mb-3 text-red-400">⚠️ 风险警示</h3>
+                <div id="risk-warnings" class="text-sm text-gray-300 space-y-1">
+                    <div>-</div>
                 </div>
             </div>
         </div>
 
-        <!-- Indicators -->
-        <div class="card p-6 mb-6">
-            <h2 class="text-xl font-bold mb-4">📊 精选技术指标 (Top 10)</h2>
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-4" id="indicators-grid"></div>
-        </div>
-
-        <!-- Chart -->
-        <div class="card p-6 mb-6">
-            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-                <h2 class="text-xl font-bold">📈 历史价格走势</h2>
-                <div class="flex gap-2">
-                    <button id="interval-1h" onclick="setIntervalAndLoad('1h')" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-semibold">小时线</button>
-                    <button id="interval-1d" onclick="setIntervalAndLoad('1d')" class="bg-slate-800 hover:bg-slate-700 text-gray-300 px-3 py-1.5 rounded-lg text-sm font-semibold">日线</button>
-                    <button id="interval-1w" onclick="setIntervalAndLoad('1w')" class="bg-slate-800 hover:bg-slate-700 text-gray-300 px-3 py-1.5 rounded-lg text-sm font-semibold">周线</button>
-                    <button id="interval-1M" onclick="setIntervalAndLoad('1M')" class="bg-slate-800 hover:bg-slate-700 text-gray-300 px-3 py-1.5 rounded-lg text-sm font-semibold">月线</button>
+        <!-- ==================== 加密货币交易面板（默认显示）==================== -->
+        <div id="crypto-panel">
+            <!-- Account Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="card p-4">
+                    <div class="text-gray-400 text-xs uppercase">账户余额</div>
+                    <div class="text-2xl font-bold text-white mt-1" id="balance">$0.00</div>
+                </div>
+                <div class="card p-4">
+                    <div class="text-gray-400 text-xs uppercase">总盈亏</div>
+                    <div class="text-2xl font-bold mt-1" id="pnl">$0.00</div>
+                </div>
+                <div class="card p-4">
+                    <div class="text-gray-400 text-xs uppercase">当前价格</div>
+                    <div class="text-2xl font-bold text-white mt-1" id="current-price">-</div>
+                </div>
+                <div class="card p-4">
+                    <div class="text-gray-400 text-xs uppercase">24h 涨跌</div>
+                    <div class="text-2xl font-bold mt-1" id="price-change">-</div>
                 </div>
             </div>
-            <div id="price-chart" style="height: 250px;"></div>
-            <div class="text-xs text-gray-500 mt-2" id="chart-source">数据来源: 本地历史接口 / Binance / Yahoo Finance</div>
-        </div>
 
-        <!-- Debug -->
-        <div class="card p-4">
-            <pre id="api-response" class="bg-slate-900 p-3 rounded-lg text-xs overflow-auto max-h-40 text-green-400">-</pre>
+            <!-- Token Info Card -->
+            <div class="card p-6 mb-6" id="token-info-card" style="display:none;">
+                <div class="flex flex-col md:flex-row gap-6">
+                    <div class="flex items-center gap-4">
+                        <img id="token-image" src="" class="w-12 h-12 rounded-full" style="display:none;">
+                        <div>
+                            <div class="text-2xl font-bold" id="token-symbol-display">-</div>
+                            <div class="text-gray-400" id="token-name-display">-</div>
+                            <div class="text-xs text-gray-500 mt-1" id="token-chain">-</div>
+                        </div>
+                    </div>
+                    <div class="flex-1 grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <div class="text-center">
+                            <div class="text-gray-400 text-xs uppercase">市值</div>
+                            <div class="text-lg font-bold text-white" id="token-market-cap">-</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-gray-400 text-xs uppercase">排名</div>
+                            <div class="text-lg font-bold text-blue-400" id="token-rank">-</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-gray-400 text-xs uppercase">24h 成交量</div>
+                            <div class="text-lg font-bold text-white" id="token-volume">-</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-gray-400 text-xs uppercase">24h 高</div>
+                            <div class="text-lg font-bold text-green-400" id="token-high">-</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-gray-400 text-xs uppercase">24h 低</div>
+                            <div class="text-lg font-bold text-red-400" id="token-low">-</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4 pt-4 border-t border-slate-700">
+                    <div class="text-xs text-gray-400">数据源: <span id="token-source" class="text-blue-400">-</span></div>
+                    <div class="text-xs text-gray-400 mt-1">合约: <span id="token-contract" class="text-gray-300">-</span></div>
+                </div>
+            </div>
+
+            <!-- Signal Card -->
+            <div class="card p-6 mb-6">
+                <h2 class="text-xl font-bold mb-4">🎯 综合交易信号</h2>
+                <div class="grid grid-cols-3 gap-4">
+                    <div class="text-center">
+                        <div class="text-gray-400 text-xs uppercase mb-2">信号强度</div>
+                        <div class="text-4xl font-bold" id="signal-strength">-</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-gray-400 text-xs uppercase mb-2">置信度</div>
+                        <div class="text-4xl font-bold" id="signal-confidence">-</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-gray-400 text-xs uppercase mb-2">建议操作</div>
+                        <div id="signal-badge" class="text-2xl font-bold px-4 py-2 rounded-lg inline-block">-</div>
+                    </div>
+                </div>
+                <div id="signal-reasoning" class="mt-4 text-sm text-gray-400 leading-6 border-t border-slate-700 pt-4">
+                    等待历史 K 线数据确认。
+                </div>
+                <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm border-t border-slate-700 pt-4">
+                    <div>
+                        <div class="text-gray-500 text-xs uppercase">单笔风险</div>
+                        <div id="signal-risk" class="text-white font-bold mt-1">-</div>
+                    </div>
+                    <div>
+                        <div class="text-gray-500 text-xs uppercase">失效位</div>
+                        <div id="signal-stop" class="text-red-300 font-bold mt-1">-</div>
+                    </div>
+                    <div>
+                        <div class="text-gray-500 text-xs uppercase">目标位</div>
+                        <div id="signal-target" class="text-green-300 font-bold mt-1">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Indicators -->
+            <div class="card p-6 mb-6">
+                <h2 class="text-xl font-bold mb-4">📊 精选技术指标 (Top 10)</h2>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4" id="indicators-grid"></div>
+            </div>
+
+            <!-- Chart -->
+            <div class="card p-6 mb-6">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                    <h2 class="text-xl font-bold">📈 历史价格走势</h2>
+                    <div class="flex gap-2">
+                        <button id="interval-1h" onclick="setIntervalAndLoad('1h')" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-semibold">小时线</button>
+                        <button id="interval-1d" onclick="setIntervalAndLoad('1d')" class="bg-slate-800 hover:bg-slate-700 text-gray-300 px-3 py-1.5 rounded-lg text-sm font-semibold">日线</button>
+                        <button id="interval-1w" onclick="setIntervalAndLoad('1w')" class="bg-slate-800 hover:bg-slate-700 text-gray-300 px-3 py-1.5 rounded-lg text-sm font-semibold">周线</button>
+                        <button id="interval-1M" onclick="setIntervalAndLoad('1M')" class="bg-slate-800 hover:bg-slate-700 text-gray-300 px-3 py-1.5 rounded-lg text-sm font-semibold">月线</button>
+                    </div>
+                </div>
+                <div id="price-chart" style="height: 250px;"></div>
+                <div class="text-xs text-gray-500 mt-2" id="chart-source">数据来源: 本地历史接口 / Binance / Yahoo Finance</div>
+            </div>
+
+            <!-- Debug -->
+            <div class="card p-4">
+                <pre id="api-response" class="bg-slate-900 p-3 rounded-lg text-xs overflow-auto max-h-40 text-green-400">-</pre>
+            </div>
         </div>
     </div>
 
@@ -283,6 +405,8 @@
         let currentSymbol = 'BTCUSDT';
         let currentInterval = '1h';
         let dataRequestSeq = 0;
+        let currentReportType = 'daily';
+        let cachedReportData = null;
         
         const popularTokens = {
             solana: ['SOL', 'BONK', 'WIF', 'POPCAT', 'FWOG', 'PNUT', 'GOAT', 'SLERF', 'MEW'],
@@ -376,14 +500,235 @@
                 bsc: 'PEPE 或 BSC 合约...',
                 base: 'BRETT 或 Base 合约...',
                 ethereum: 'ETH 或 ETH 合约...',
-                us_stock: 'AAPL / MSFT / NVDA / SPY...'
+                us_stock: '输入股票代码查询...'
             };
-            document.getElementById('token-input').placeholder = placeholders[chain] || '';
+            
+            // 更新输入框提示
+            const inputEl = document.getElementById('token-input');
+            if (inputEl) {
+                inputEl.placeholder = placeholders[chain] || '';
+            }
             
             const tokens = popularTokens[chain] || [];
             document.getElementById('popular-tokens').innerHTML = tokens.map(t => 
                 `<button onclick="document.getElementById('token-input').value='${t}';loadTokenData();" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs">${t}</button>`
             ).join('');
+            
+            // 切换面板显示
+            const cryptoPanel = document.getElementById('crypto-panel');
+            const analysisPanel = document.getElementById('us-stock-analysis');
+            const searchBtn = document.getElementById('search-btn');
+            
+            if (chain === 'us_stock') {
+                // 显示美股分析面板，隐藏加密货币面板
+                if (cryptoPanel) cryptoPanel.style.display = 'none';
+                if (analysisPanel) analysisPanel.classList.remove('hidden');
+                if (searchBtn) searchBtn.textContent = '📊 查看分析';
+                loadAnalysisReport();
+            } else {
+                // 显示加密货币面板，隐藏美股分析面板
+                if (cryptoPanel) cryptoPanel.style.display = 'block';
+                if (analysisPanel) analysisPanel.classList.add('hidden');
+                if (searchBtn) searchBtn.textContent = '🔍 查询';
+                // 重置输入框
+                if (inputEl && inputEl.value === '') {
+                    inputEl.value = chain === 'ethereum' ? 'BTC' : '';
+                }
+            }
+        }
+
+        // ==================== 美股分析功能 ====================
+        function handleSearchAction() {
+            if (currentChain === 'us_stock') {
+                loadAnalysisReport();
+            } else {
+                loadTokenData();
+            }
+        }
+
+        function switchReportType(type) {
+            currentReportType = type;
+            document.getElementById('tab-daily').classList.toggle('tab-active', type === 'daily');
+            document.getElementById('tab-weekly').classList.toggle('tab-active', type === 'weekly');
+            loadAnalysisReport();
+        }
+
+        async function refreshAnalysis() {
+            cachedReportData = null;
+            await loadAnalysisReport();
+        }
+
+        async function loadAnalysisReport() {
+            const loadingEl = document.getElementById('analysis-loading');
+            if (loadingEl) loadingEl.style.display = 'block';
+            
+            try {
+                const endpoint = currentReportType === 'weekly' ? 'weekly_report' : 'daily_report';
+                const url = `${API_BASE}/webhooks/${endpoint}?compact=true`;
+                const res = await fetch(url);
+                
+                if (!res.ok) {
+                    throw new Error(`API error: ${res.status}`);
+                }
+                
+                const data = await res.json();
+                cachedReportData = data;
+                renderAnalysisReport(data);
+                
+                document.getElementById('status-dot').className = 'w-3 h-3 rounded-full bg-green-500 pulse';
+                document.getElementById('status-text').textContent = '美股分析 Ready';
+                
+            } catch (e) {
+                console.error('[loadAnalysisReport] Error:', e);
+                const isNetworkError = e instanceof TypeError || /fetch|network|Failed/i.test(e.message);
+                document.getElementById('status-dot').className = 'w-3 h-3 rounded-full bg-red-500';
+                document.getElementById('status-text').textContent = isNetworkError ? 'API Offline' : 'Error';
+                
+                // 显示离线提示
+                const sections = ['strong-buys', 'buy-candidates', 'sector-ranking', 'trade-recommendations'];
+                sections.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.innerHTML = `<div class="text-red-400 text-sm">⚠️ 后端服务未启动<br><span class="text-gray-400">请运行: python3 main.py webhook</span></div>`;
+                });
+            } finally {
+                if (loadingEl) loadingEl.style.display = 'none';
+            }
+        }
+
+        function renderAnalysisReport(data) {
+            // 报告周期
+            const periodLabel = data.period_label || (currentReportType === 'weekly' ? '本周周报' : '今日日报');
+            document.getElementById('report-period').textContent = periodLabel;
+            
+            // 市场信号
+            const marketSignal = data.market_signal || 'NEUTRAL';
+            const signalEl = document.getElementById('market-signal');
+            signalEl.textContent = marketSignal;
+            signalEl.className = 'text-2xl font-bold mt-1';
+            if (marketSignal === 'BULL') {
+                signalEl.classList.add('text-green-400');
+            } else if (marketSignal === 'BEAR') {
+                signalEl.classList.add('text-red-400');
+            } else {
+                signalEl.classList.add('text-yellow-400');
+            }
+            
+            // 市场广度
+            const breadth = data.breadth_pct ?? '-';
+            document.getElementById('breadth-pct').textContent = typeof breadth === 'number' ? breadth.toFixed(1) + '%' : breadth;
+            
+            // 扫描数量
+            const stats = data.stats || {};
+            document.getElementById('scan-count').textContent = stats.scanned || '-';
+            
+            // 涨跌比
+            const upCount = stats.up_count || 0;
+            const downCount = stats.down_count || 0;
+            document.getElementById('advance-decline').textContent = `${upCount}/${downCount}`;
+            
+            // 宏观信号
+            const macroSignal = data.macro_signal || '-';
+            document.getElementById('macro-signal').textContent = macroSignal;
+            
+            // 强势买入
+            const strongBuys = data.strong_buys || [];
+            const strongBuysEl = document.getElementById('strong-buys');
+            if (strongBuys.length === 0) {
+                strongBuysEl.innerHTML = '<div class="text-gray-400 text-sm">暂无数据</div>';
+            } else {
+                strongBuysEl.innerHTML = strongBuys.slice(0, 5).map(item => {
+                    const symbol = typeof item === 'string' ? item : item.symbol || '-';
+                    const score = typeof item === 'object' ? item.composite_score || item.score || '-' : '-';
+                    return `<div class="flex items-center justify-between p-2 bg-slate-800 rounded-lg stock-card cursor-pointer" onclick="queryStock('${symbol}')">
+                        <span class="font-bold text-green-400">${symbol}</span>
+                        <span class="text-xs text-gray-400">评分: ${score}</span>
+                    </div>`;
+                }).join('');
+            }
+            
+            // 买入候选
+            const buyCandidates = data.buy_candidates || [];
+            const candidatesEl = document.getElementById('buy-candidates');
+            if (buyCandidates.length === 0) {
+                candidatesEl.innerHTML = '<div class="text-gray-400 text-sm">暂无数据</div>';
+            } else {
+                candidatesEl.innerHTML = buyCandidates.slice(0, 5).map(item => {
+                    const symbol = typeof item === 'string' ? item : item.symbol || '-';
+                    return `<div class="flex items-center justify-between p-2 bg-slate-800 rounded-lg stock-card cursor-pointer" onclick="queryStock('${symbol}')">
+                        <span class="font-bold text-blue-400">${symbol}</span>
+                    </div>`;
+                }).join('');
+            }
+            
+            // 板块轮动
+            const sectors = data.sector_ranking || [];
+            const sectorsEl = document.getElementById('sector-ranking');
+            if (sectors.length === 0) {
+                sectorsEl.innerHTML = '<div class="text-gray-400 text-sm">暂无数据</div>';
+            } else {
+                sectorsEl.innerHTML = sectors.slice(0, 5).map((sector, idx) => {
+                    const name = sector.sector || sector.name || `板块${idx + 1}`;
+                    const flow = sector.flow || sector.signal || '-';
+                    const flowClass = flow === 'STRONG_INFLOW' || flow === 'inflow' ? 'text-green-400' : 
+                                     flow === 'STRONG_OUTFLOW' || flow === 'outflow' ? 'text-red-400' : 'text-gray-400';
+                    return `<div class="flex items-center justify-between p-2 bg-slate-800 rounded-lg">
+                        <span class="text-sm">${idx + 1}. ${name}</span>
+                        <span class="text-sm font-bold ${flowClass}">${flow}</span>
+                    </div>`;
+                }).join('');
+            }
+            
+            // 交易建议
+            const recommendations = data.recommendations || [];
+            const recEl = document.getElementById('trade-recommendations');
+            if (recommendations.length === 0) {
+                recEl.innerHTML = '<div class="text-gray-400 text-sm">暂无建议</div>';
+            } else {
+                recEl.innerHTML = recommendations.slice(0, 3).map(rec => {
+                    const symbol = rec.symbol || '-';
+                    const action = rec.action || rec.signal || '-';
+                    const entry = rec.entry_price ? `入场: ${formatPrice(rec.entry_price)}` : '';
+                    const target = rec.target_price ? `目标: ${formatPrice(rec.target_price)}` : '';
+                    const stop = rec.stop_loss ? `止损: ${formatPrice(rec.stop_loss)}` : '';
+                    const actionClass = action.includes('BUY') || action.includes('买入') ? 'text-green-400' : 
+                                       action.includes('SELL') || action.includes('卖出') ? 'text-red-400' : 'text-yellow-400';
+                    return `<div class="p-3 bg-slate-800 rounded-lg">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-bold text-white">${symbol}</span>
+                            <span class="text-sm font-bold ${actionClass}">${action}</span>
+                        </div>
+                        <div class="text-xs text-gray-400">${[entry, target, stop].filter(Boolean).join(' | ')}</div>
+                    </div>`;
+                }).join('');
+            }
+            
+            // 财报日历
+            const earnings = data.earnings_calendar || {};
+            const thisWeek = earnings.this_week || [];
+            const nextWeek = earnings.next_week || [];
+            
+            document.getElementById('earnings-this-week').innerHTML = thisWeek.length === 0 
+                ? '<div class="text-gray-400 text-sm">本周无重要财报</div>'
+                : thisWeek.map(e => `<div class="text-sm p-2 bg-slate-800 rounded">${e.symbol || e}: ${e.date || e}</div>`).join('');
+            
+            document.getElementById('earnings-next-week').innerHTML = nextWeek.length === 0 
+                ? '<div class="text-gray-400 text-sm">下周无重要财报</div>'
+                : nextWeek.map(e => `<div class="text-sm p-2 bg-slate-800 rounded">${e.symbol || e}: ${e.date || e}</div>`).join('');
+            
+            // 风险警示
+            const risks = data.risk_warnings || [];
+            document.getElementById('risk-warnings').innerHTML = risks.length === 0
+                ? '<div class="text-green-400">✅ 暂无重大风险提示</div>'
+                : risks.map(r => `<div>⚡ ${typeof r === 'string' ? r : r.message || r}</div>`).join('');
+        }
+
+        function queryStock(symbol) {
+            document.getElementById('token-input').value = symbol;
+            selectChain('us_stock');
+            // 切换回加密货币面板查询股票价格
+            document.getElementById('crypto-panel').style.display = 'block';
+            document.getElementById('us-stock-analysis').classList.add('hidden');
+            loadTokenData();
         }
 
         // ==================== 价格数据加载 ====================
@@ -466,9 +811,12 @@
             } catch (e) {
                 if (requestId !== dataRequestSeq) return;
                 console.error('[loadTokenData] Error:', e);
+                const isNetworkError = e instanceof TypeError || /fetch|network|Failed to fetch/i.test(e.message);
                 document.getElementById('status-dot').className = 'w-3 h-3 rounded-full bg-red-500';
-                document.getElementById('status-text').textContent = 'Error';
-                document.getElementById('api-response').textContent = 'Error: ' + e.message;
+                document.getElementById('status-text').textContent = isNetworkError ? 'API Offline' : 'Error';
+                document.getElementById('api-response').textContent = isNetworkError
+                    ? `Error: ${e.message}\n请先启动后端服务: python3 main.py webhook\nAPI 地址: ${API_BASE}`
+                    : 'Error: ' + e.message;
             }
         }
 
@@ -496,159 +844,141 @@
                         }
                     }
                 } catch (e) {
-                    console.error('[Market Overview] Error for', token, ':', e);
+                    console.error(`[loadMarketOverview] ${token}:`, e.message);
                 }
             }
         }
 
-        // ==================== 历史图表 ====================
-        async function loadHistory(interval = '1h', symbol = currentSymbol, requestId = ++dataRequestSeq) {
-            const config = intervalConfig[interval] || intervalConfig['1d'];
-            let history = null;
-            let historySource = '';
+        // ==================== 历史K线 ====================
+        async function loadHistory(interval, symbol, requestId = ++dataRequestSeq) {
+            const limit = intervalConfig[interval]?.limit || 260;
             
             try {
-                history = await fetchLocalHistory(symbol, interval, config.limit);
-                historySource = history.source === 'binance' ? 'Binance（本地接口）' : 'Yahoo Finance（本地备用）';
+                const assetClass = isUsStockSymbol(symbol) ? 'us_equity' : 'crypto';
+                const url = `${API_BASE}/webhooks/history/${encodeURIComponent(symbol)}?interval=${interval}&limit=${limit}&asset_class=${assetClass}`;
+                const res = await fetch(url);
                 
-                if (!history || !history.data || history.data.length === 0) {
-                    throw new Error('本地历史接口返回空数据');
-                }
-            } catch (localError) {
-                console.error('[loadHistory] 本地接口失败:', localError.message);
-                try {
-                    history = await fetchBinanceHistory(symbol, interval, config.limit);
-                    historySource = 'Binance（浏览器备用）';
-                } catch (binanceError) {
-                    console.error('[loadHistory] Binance 备用失败:', binanceError.message);
-                    history = await fetchYahooHistory(symbol, interval, config.limit);
-                    historySource = 'Yahoo Finance（浏览器备用）';
-                }
-            }
-
-            try {
-                if (requestId !== dataRequestSeq || symbol !== currentSymbol) {
-                    return;
-                }
-                if (!history || !history.data || history.data.length === 0) {
-                    document.getElementById('chart-source').textContent = '⚠️ 暂无历史数据';
-                    resetSignalState('历史数据为空，拒绝给出交易方向。');
-                    // 清除旧图表
-                    Plotly.purge('price-chart');
-                    document.getElementById('price-chart').innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">暂无数据</div>';
-                    return;
-                }
-                
-                // 绘制图表
-                const rows = history.data;
-                const formatTime = (timeStr) => {
-                    const d = new Date(timeStr);
-                    if (interval === '1h') {
-                        const month = String(d.getMonth() + 1).padStart(2, '0');
-                        const day = String(d.getDate()).padStart(2, '0');
-                        const hour = String(d.getHours()).padStart(2, '0');
-                        return `${month}-${day} ${hour}:00`;
+                if (res.ok) {
+                    const result = await res.json();
+                    if (requestId !== dataRequestSeq || symbol !== currentSymbol) return;
+                    renderChart(result, interval);
+                    const rows = result.data || [];
+                    if (rows.length >= 20) {
+                        const values = calculateIndicators(rows);
+                        updateIndicators(values);
+                        updateTradingSignal(values, rows, interval, symbol, requestId);
                     }
-                    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                };
-                
-                Plotly.newPlot('price-chart', [{
-                    x: rows.map(r => formatTime(r.time)),
-                    open: rows.map(r => r.open),
-                    high: rows.map(r => r.high),
-                    low: rows.map(r => r.low),
-                    close: rows.map(r => r.close),
-                    type: 'candlestick',
-                    increasing: { line: { color: '#22c55e' } },
-                    decreasing: { line: { color: '#ef4444' } }
-                }], {
-                    responsive: true,
-                    paper_bgcolor: 'transparent',
-                    plot_bgcolor: 'transparent',
-                    font: { color: '#9ca3af', size: 11 },
-                    xaxis: { 
-                        gridcolor: '#1e293b', 
-                        rangeslider: { visible: false },
-                        tickangle: interval === '1h' ? -45 : 0
-                    },
-                    yaxis: { gridcolor: '#1e293b', tickprefix: '$', tickformat: ',.0f' },
-                    margin: { t: 10, r: 10, b: 40, l: 60 }
-                });
-                
-                document.getElementById('chart-source').textContent = 
-                    `数据来源: ${historySource || history.source || 'unknown'} | ${symbol} ${config.label} | ${history.count} 根K线`;
-                const indicatorValues = calculateIndicators(rows);
-                updateIndicators(indicatorValues);
-                await updateTradingSignal(indicatorValues, rows, interval, symbol, requestId);
-                    
+                } else {
+                    if (requestId !== dataRequestSeq || symbol !== currentSymbol) return;
+                    const fallback = generateDemoData(interval, limit);
+                    renderChart(fallback, interval);
+                    document.getElementById('chart-source').textContent = '⚠️ API 数据缺失，使用演示数据';
+                }
             } catch (e) {
                 if (requestId !== dataRequestSeq || symbol !== currentSymbol) return;
                 console.error('[loadHistory] Error:', e);
-                document.getElementById('chart-source').textContent = '⚠️ 图表加载失败: ' + e.message;
-                resetSignalState('历史数据加载失败，拒绝给出交易方向。');
-                // 清除旧图表
-                Plotly.purge('price-chart');
-                document.getElementById('price-chart').innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">数据加载失败</div>';
+                const fallback = generateDemoData(interval, limit);
+                renderChart(fallback, interval);
+                document.getElementById('chart-source').textContent = '⚠️ 网络错误，使用演示数据';
             }
         }
 
-        async function fetchLocalHistory(symbol, interval, limit) {
-            const localUrl = `${API_BASE}/webhooks/history/${encodeURIComponent(symbol)}?interval=${encodeURIComponent(interval)}&limit=${limit}`;
-            const res = await fetch(localUrl);
-            if (!res.ok) throw new Error(`本地历史接口 HTTP ${res.status}`);
-            return res.json();
-        }
-
-        async function fetchBinanceHistory(symbol, interval, limit) {
-            const binanceUrl = `https://api.binance.com/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=${limit}`;
-            const res = await fetch(binanceUrl);
-            if (!res.ok) throw new Error(`Binance HTTP ${res.status}`);
-            const klines = await res.json();
-            return {
-                source: 'binance',
-                count: klines.length,
-                data: klines.map(k => ({
-                    time: new Date(k[0]).toISOString(),
-                    open: parseFloat(k[1]),
-                    high: parseFloat(k[2]),
-                    low: parseFloat(k[3]),
-                    close: parseFloat(k[4]),
-                    volume: parseFloat(k[5])
-                }))
+        function renderChart(data, interval) {
+            const rows = data.data || [];
+            if (!rows.length) return;
+            
+            const times = rows.map(r => r.time || r.timestamp || r.date);
+            const closes = rows.map(r => Number(r.close));
+            const volumes = rows.map(r => Number(r.volume || 0));
+            
+            const trace1 = {
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Close',
+                x: times,
+                y: closes,
+                line: { color: '#3b82f6', width: 2 }
             };
+            
+            const trace2 = {
+                type: 'bar',
+                name: 'Volume',
+                x: times,
+                y: volumes,
+                yaxis: 'y2',
+                marker: { color: 'rgba(59, 130, 246, 0.3)' }
+            };
+            
+            const layout = {
+                paper_bgcolor: 'transparent',
+                plot_bgcolor: 'transparent',
+                font: { color: '#94a3b8', family: 'Inter, sans-serif' },
+                showlegend: false,
+                margin: { t: 10, r: 10, b: 30, l: 50 },
+                xaxis: {
+                    gridcolor: '#1e293b',
+                    linecolor: '#1e293b',
+                    tickfont: { size: 10 },
+                    showspikes: true,
+                    spikemode: 'across',
+                    spikesnap: 'cursor',
+                    spikecolor: '#6366f1',
+                    spikethickness: 1
+                },
+                yaxis: {
+                    gridcolor: '#1e293b',
+                    linecolor: '#1e293b',
+                    tickfont: { size: 10 },
+                    tickprefix: '$',
+                    showspikes: true,
+                    spikemode: 'across',
+                    spikecolor: '#6366f1',
+                    spikethickness: 1
+                },
+                yaxis2: {
+                    gridcolor: 'transparent',
+                    linecolor: 'transparent',
+                    showgrid: false,
+                    domain: [0, 0.2],
+                    showticklabels: false
+                }
+            };
+            
+            Plotly.newPlot('price-chart', [trace1, trace2], layout, {
+                responsive: true,
+                displayModeBar: false
+            });
+            
+            document.getElementById('chart-source').textContent = data.source ? `数据来源: ${data.source}` : '数据来源: 本地历史接口 / Binance / Yahoo Finance';
         }
 
-        async function fetchYahooHistory(symbol, interval, limit) {
-            // 美股符号保持原样，其他加密货币转换
-            const isUsStock = isUsStockSymbol(symbol);
-            let yahooSymbol;
-            if (isUsStock) {
-                yahooSymbol = symbol;
-            } else {
-                yahooSymbol = symbol.endsWith('USDT') ? symbol.replace('USDT', '-USD') : symbol + '-USD';
+        function generateDemoData(interval, limit) {
+            const now = new Date();
+            const rows = [];
+            let price = 65000;
+            
+            for (let i = limit - 1; i >= 0; i--) {
+                const date = new Date(now);
+                if (interval === '1h') date.setHours(date.getHours() - i);
+                else if (interval === '1d') date.setDate(date.getDate() - i);
+                else if (interval === '1w') date.setDate(date.getDate() - i * 7);
+                else date.setMonth(date.getMonth() - i);
+                
+                price += (Math.random() - 0.48) * 500;
+                price = Math.max(price, 30000);
+                
+                rows.push({
+                    time: date.toISOString().slice(0, 19).replace('T', ' '),
+                    timestamp: date.getTime() / 1000,
+                    open: price + Math.random() * 100,
+                    high: price + Math.random() * 200,
+                    low: price - Math.random() * 200,
+                    close: price,
+                    volume: Math.random() * 1000000 + 500000
+                });
             }
-            const map = {
-                '1h': ['1h', '5d'],
-                '1d': ['1d', '1y'],
-                '1w': ['1wk', '5y'],
-                '1M': ['1mo', '10y']
-            };
-            const [yInterval, yRange] = map[interval] || map['1d'];
-            const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${yInterval}&range=${yRange}`);
-            if (!res.ok) throw new Error(`Yahoo HTTP ${res.status}`);
-            const payload = await res.json();
-            const result = payload.chart?.result?.[0];
-            const timestamps = result?.timestamp || [];
-            const quote = result?.indicators?.quote?.[0] || {};
-            const rows = timestamps.map((ts, i) => ({
-                time: new Date(ts * 1000).toISOString(),
-                open: quote.open?.[i],
-                high: quote.high?.[i],
-                low: quote.low?.[i],
-                close: quote.close?.[i],
-                volume: quote.volume?.[i] || 0
-            })).filter(r => [r.open, r.high, r.low, r.close].every(v => v !== null && v !== undefined)).slice(-limit);
-            return { source: 'yahoo_finance', count: rows.length, data: rows };
+            
+            return { source: '演示数据 (Demo)', count: rows.length, data: rows };
         }
 
         function setIntervalAndLoad(interval) {
@@ -745,7 +1075,6 @@
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#039;');
         }
-
 
         function calculateIndicators(rows) {
             const closes = rows.map(r => Number(r.close));
@@ -1054,10 +1383,12 @@
             // 隐藏加载动画
             hideLoading();
             
-            // 定时刷新
+            // 定时刷新（仅加密货币面板）
             setInterval(async () => {
-                await loadMarketOverview();
-                await loadTokenData();
+                if (currentChain !== 'us_stock') {
+                    await loadMarketOverview();
+                    await loadTokenData();
+                }
             }, 60000);
         });
     </script>
