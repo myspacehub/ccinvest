@@ -1012,13 +1012,21 @@ async def webhook_price(symbol: str, asset_class: str = "auto"):
 
 
 @app.get("/webhooks/history/{symbol}", tags=["市场"])
-async def webhook_history(symbol: str, interval: str = "1d", limit: int = 365):
-    """Webhook: 获取交易对历史 K 线数据。"""
+async def webhook_history(symbol: str, interval: str = "1d", limit: int = 365, asset_class: str = "auto"):
+    """Webhook: 获取交易对历史 K 线数据。
+    
+    Args:
+        symbol: 交易对/股票代码
+        interval: 时间周期 (1h, 1d, 1w, 1M)
+        limit: 数据数量
+        asset_class: 资产类别 (crypto, us_equity, auto)
+    """
     allowed_intervals = {"1h", "1d", "1w", "1M"}
     if interval not in allowed_intervals:
         raise HTTPException(status_code=400, detail="interval 仅支持 1h、1d、1w、1M")
     
     limit = max(1, min(limit, 1000))
+    resolved_class = infer_asset_class(symbol, asset_class)
     normalized_symbol = symbol.upper()
     
     try:
@@ -1028,15 +1036,16 @@ async def webhook_history(symbol: str, interval: str = "1d", limit: int = 365):
         data = []
         validation = None
         
-        # 尝试从 Binance 获取数据
+        # 尝试从 Binance 获取数据（仅限加密货币）
         try:
-            data, validation = collector.fetch_ohlc(
-                symbol=normalized_symbol,
-                interval=interval,
-                limit=limit
-            )
-            if data:
-                collector.save_ohlc_data(data)
+            if resolved_class != "us_equity":
+                data, validation = collector.fetch_ohlc(
+                    symbol=normalized_symbol,
+                    interval=interval,
+                    limit=limit
+                )
+                if data:
+                    collector.save_ohlc_data(data)
         except Exception as e:
             logger.warning(f"Binance 获取 K 线失败: {e}")
         

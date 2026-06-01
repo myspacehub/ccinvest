@@ -801,11 +801,134 @@
             const cryptoPanel = document.getElementById('crypto-panel');
             if (cryptoPanel) cryptoPanel.style.display = 'none';
             
-            // 设置报告类型并加载
-            if (reportType) {
-                switchReportType(reportType);
+            // 获取当前输入的股票代码
+            const symbol = document.getElementById('token-input').value.trim().toUpperCase();
+            
+            // 显示股票分析而不是全局报告
+            loadStockAnalysis(symbol);
+        }
+
+        async function loadStockAnalysis(symbol) {
+            if (!symbol) {
+                alert('请先输入股票代码');
+                return;
+            }
+            
+            const loadingEl = document.getElementById('analysis-loading');
+            if (loadingEl) loadingEl.style.display = 'block';
+            
+            try {
+                // 调用单个股票信号 API
+                const url = `${API_BASE}/webhooks/us_equity_signal/${encodeURIComponent(symbol)}?fetch_deep=true`;
+                const res = await fetch(url);
+                
+                if (!res.ok) {
+                    throw new Error(`API error: ${res.status}`);
+                }
+                
+                const data = await res.json();
+                renderStockAnalysis(symbol, data);
+                
+            } catch (e) {
+                console.error('[loadStockAnalysis] Error:', e);
+                document.getElementById('market-signal').textContent = 'Error';
+                document.getElementById('market-signal').className = 'text-2xl font-bold mt-1 text-red-400';
+            } finally {
+                if (loadingEl) loadingEl.style.display = 'none';
+            }
+        }
+
+        function renderStockAnalysis(symbol, data) {
+            // 更新报告标题
+            document.getElementById('report-period').textContent = `${symbol} 股票分析`;
+            
+            // 显示市场信号（使用股票信号）
+            const signal = data.signal || data.label || 'NEUTRAL';
+            document.getElementById('market-signal').textContent = signal;
+            document.getElementById('market-signal').className = 'text-2xl font-bold mt-1 ' + 
+                (signal.includes('BUY') || signal.includes('BULL') ? 'text-green-400' : 
+                 signal.includes('SELL') || signal.includes('BEAR') ? 'text-red-400' : 'text-yellow-400');
+            
+            // 评分
+            const score = data.composite_score || data.score || 0;
+            document.getElementById('breadth-pct').textContent = score.toFixed(0) + ' 分';
+            document.getElementById('scan-count').textContent = '1';
+            
+            // 信号详情
+            const confidence = data.confidence || 0;
+            document.getElementById('advance-decline').textContent = confidence.toFixed(0) + '% 置信';
+            
+            // 宏观信号
+            document.getElementById('macro-signal').textContent = data.trend || data.momentum || '-';
+            
+            // 强势买入 - 显示当前股票
+            const strongBuysEl = document.getElementById('strong-buys');
+            if (signal.includes('BUY') || signal.includes('BULL')) {
+                strongBuysEl.innerHTML = `
+                    <div class="p-3 bg-slate-800 rounded-lg">
+                        <div class="font-bold text-green-400 text-lg">${symbol}</div>
+                        <div class="text-sm text-gray-400 mt-1">综合评分: ${score.toFixed(0)}</div>
+                        <div class="text-sm text-gray-400">信号: ${signal}</div>
+                        ${data.entry_price ? `<div class="text-sm mt-2">入场价: $${data.entry_price.toFixed(2)}</div>` : ''}
+                        ${data.take_profit_1 ? `<div class="text-sm text-green-400">目标1: $${data.take_profit_1.toFixed(2)}</div>` : ''}
+                        ${data.stop_loss ? `<div class="text-sm text-red-400">止损: $${data.stop_loss.toFixed(2)}</div>` : ''}
+                    </div>`;
             } else {
-                loadAnalysisReport();
+                strongBuysEl.innerHTML = `<div class="text-gray-400 text-sm">${symbol} - ${signal}</div>`;
+            }
+            
+            // 买入候选
+            const candidatesEl = document.getElementById('buy-candidates');
+            candidatesEl.innerHTML = `
+                <div class="p-3 bg-slate-800 rounded-lg">
+                    <div class="font-bold text-blue-400">${symbol}</div>
+                    <div class="text-sm text-gray-400">风险等级: ${data.risk_level || '-'}</div>
+                    <div class="text-sm text-gray-400">动量: ${data.momentum || '-'}</div>
+                </div>`;
+            
+            // 板块轮动 - 显示技术分析
+            const sectorsEl = document.getElementById('sector-ranking');
+            const techScore = data.technical_score || 0;
+            const flowScore = data.flow_score || 0;
+            sectorsEl.innerHTML = `
+                <div class="p-3 bg-slate-800 rounded-lg">
+                    <div class="font-bold">技术评分</div>
+                    <div class="text-2xl text-blue-400">${techScore.toFixed(0)}</div>
+                </div>
+                <div class="p-3 bg-slate-800 rounded-lg">
+                    <div class="font-bold">资金流评分</div>
+                    <div class="text-2xl text-purple-400">${flowScore.toFixed(0)}</div>
+                </div>`;
+            
+            // 交易建议
+            const recEl = document.getElementById('trade-recommendations');
+            const action = data.signal || signal;
+            recEl.innerHTML = `
+                <div class="p-3 bg-slate-800 rounded-lg">
+                    <div class="font-bold text-white">${symbol}</div>
+                    <div class="text-lg font-bold ${action.includes('BUY') ? 'text-green-400' : action.includes('SELL') ? 'text-red-400' : 'text-yellow-400'}">${action}</div>
+                    ${data.reasons && data.reasons.length ? '<div class="text-xs text-gray-400 mt-2">' + data.reasons.join('<br>') + '</div>' : ''}
+                </div>`;
+            
+            // 财报日历 - 显示财报日期
+            const earningsEl = document.getElementById('earnings-this-week');
+            const earnings = data.earnings_dates || [];
+            if (earnings.length > 0) {
+                earningsEl.innerHTML = earnings.map(e => `<div class="text-sm p-2 bg-slate-800 rounded">${e}</div>`).join('');
+            } else {
+                earningsEl.innerHTML = '<div class="text-gray-400 text-sm">暂无财报日期</div>';
+            }
+            
+            // 下周财报为空
+            document.getElementById('earnings-next-week').innerHTML = '<div class="text-gray-400 text-sm">-</div>';
+            
+            // 风险警示
+            const risksEl = document.getElementById('risk-warnings');
+            const warnings = data.warnings || [];
+            if (warnings.length > 0) {
+                risksEl.innerHTML = warnings.map(w => `<div>⚡ ${w}</div>`).join('');
+            } else {
+                risksEl.innerHTML = '<div class="text-green-400">✅ 暂无重大风险</div>';
             }
         }
 
