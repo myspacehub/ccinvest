@@ -1,0 +1,16 @@
+# Render Blueprint Configuration
+services:
+  - type: web
+    name: ccinvest
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py webhook
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ccinvest-db
+          property: connectionString

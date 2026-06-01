@@ -432,13 +432,17 @@
 
         // ==================== 工具函数 ====================
         function getApiBase() {
-            if (!window.location.origin || window.location.origin === 'null' || window.location.protocol === 'file:') {
+            // Render 环境：使用同源 API；本地开发：使用 localhost:10000
+            const origin = window.location.origin;
+            if (!origin || origin === 'null' || window.location.protocol === 'file:') {
                 return 'http://localhost:10000';
             }
-            if (['localhost', '127.0.0.1', '::1'].includes(window.location.hostname) && window.location.port !== '10000') {
-                return `${window.location.protocol}//${window.location.hostname}:10000`;
+            const hostname = window.location.hostname;
+            if (['localhost', '127.0.0.1', '::1'].includes(hostname)) {
+                return hostname === 'localhost' ? origin + ':10000' : origin.replace(/:\d+/, ':10000');
             }
-            return window.location.origin;
+            // 生产环境使用同源
+            return origin;
         }
 
         function normalizePriceSymbol(input) {
