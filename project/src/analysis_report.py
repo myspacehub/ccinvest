@@ -53,6 +53,7 @@ class ReportConfig:
 class DailyReport:
     """每日/每周报告"""
     report_type: str
+    period_label: str
     generated_at: str
     
     # 市场概览
