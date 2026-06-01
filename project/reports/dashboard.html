@@ -282,6 +282,7 @@
         let currentChain = 'ethereum';
         let currentSymbol = 'BTCUSDT';
         let currentInterval = '1h';
+        let dataRequestSeq = 0;
         
         const popularTokens = {
             solana: ['SOL', 'BONK', 'WIF', 'POPCAT', 'FWOG', 'PNUT', 'GOAT', 'SLERF', 'MEW'],
@@ -387,13 +388,13 @@
 
         // ==================== 价格数据加载 ====================
         async function loadTokenData() {
+            const requestId = ++dataRequestSeq;
             const input = document.getElementById('token-input').value.trim();
             if (!input) return;
             
             // 更新当前Symbol
             const priceSymbol = normalizePriceSymbol(input);
             currentSymbol = normalizeHistorySymbol(input);
-            console.log('[loadTokenData] Symbol updated to:', currentSymbol);
             
             // 更新状态
             document.getElementById('status-text').textContent = 'Loading...';
@@ -409,9 +410,8 @@
                 }
                 
                 const d = await res.json();
-                console.log('[API Response] d.symbol:', d.symbol, '| input:', input);
+                if (requestId !== dataRequestSeq) return;
                 const histSymbol = normalizeHistorySymbol(input, d);
-                console.log('[loadTokenData] histSymbol:', histSymbol, '| currentSymbol:', currentSymbol);
                 currentSymbol = histSymbol;
                 
                 // 更新主价格显示
@@ -455,15 +455,16 @@
                 
                 // 加载历史图表
                 if (histSymbol) {
-                    console.log('[loadTokenData] Calling loadHistory with symbol:', histSymbol);
-                    await loadHistory(currentInterval, histSymbol);
+                    await loadHistory(currentInterval, histSymbol, requestId);
                 } else {
+                    if (requestId !== dataRequestSeq) return;
                     document.getElementById('chart-source').textContent = '⚠️ 合约地址暂不支持历史 K 线';
                     Plotly.purge('price-chart');
                     document.getElementById('price-chart').innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">合约地址暂不支持</div>';
                 }
                 
             } catch (e) {
+                if (requestId !== dataRequestSeq) return;
                 console.error('[loadTokenData] Error:', e);
                 document.getElementById('status-dot').className = 'w-3 h-3 rounded-full bg-red-500';
                 document.getElementById('status-text').textContent = 'Error';
@@ -501,15 +502,12 @@
         }
 
         // ==================== 历史图表 ====================
-        async function loadHistory(interval = '1h', symbol = currentSymbol) {
-            console.log('[loadHistory] Called with symbol:', symbol, '| interval:', interval);
+        async function loadHistory(interval = '1h', symbol = currentSymbol, requestId = ++dataRequestSeq) {
             const config = intervalConfig[interval] || intervalConfig['1d'];
             let history = null;
             let historySource = '';
             
             try {
-                const url = `${API_BASE}/webhooks/history/${encodeURIComponent(symbol)}?interval=${encodeURIComponent(interval)}&limit=${config.limit}`;
-                console.log('[loadHistory] Fetching URL:', url);
                 history = await fetchLocalHistory(symbol, interval, config.limit);
                 historySource = history.source === 'binance' ? 'Binance（本地接口）' : 'Yahoo Finance（本地备用）';
                 
@@ -529,6 +527,9 @@
             }
 
             try {
+                if (requestId !== dataRequestSeq || symbol !== currentSymbol) {
+                    return;
+                }
                 if (!history || !history.data || history.data.length === 0) {
                     document.getElementById('chart-source').textContent = '⚠️ 暂无历史数据';
                     resetSignalState('历史数据为空，拒绝给出交易方向。');
@@ -578,9 +579,10 @@
                     `数据来源: ${historySource || history.source || 'unknown'} | ${symbol} ${config.label} | ${history.count} 根K线`;
                 const indicatorValues = calculateIndicators(rows);
                 updateIndicators(indicatorValues);
-                await updateTradingSignal(indicatorValues, rows, interval, symbol);
+                await updateTradingSignal(indicatorValues, rows, interval, symbol, requestId);
                     
             } catch (e) {
+                if (requestId !== dataRequestSeq || symbol !== currentSymbol) return;
                 console.error('[loadHistory] Error:', e);
                 document.getElementById('chart-source').textContent = '⚠️ 图表加载失败: ' + e.message;
                 resetSignalState('历史数据加载失败，拒绝给出交易方向。');
@@ -681,19 +683,22 @@
             return values;
         }
 
-        async function updateTradingSignal(values, rows, interval, symbol = currentSymbol) {
+        async function updateTradingSignal(values, rows, interval, symbol = currentSymbol, requestId = dataRequestSeq) {
             try {
                 const assetClass = isUsStockSymbol(symbol) ? 'us_equity' : 'crypto';
                 const url = `${API_BASE}/webhooks/strategy_signal/${encodeURIComponent(symbol)}?asset_class=${assetClass}&interval=${encodeURIComponent(interval)}&limit=${intervalConfig[interval]?.limit || 260}`;
                 const res = await fetch(url);
                 if (res.ok) {
-                    renderStrategySignal(await res.json());
+                    const signal = await res.json();
+                    if (requestId !== dataRequestSeq || symbol !== currentSymbol) return;
+                    renderStrategySignal(signal);
                     return;
                 }
             } catch (e) {
                 console.error('[strategy_signal] 后端策略失败，使用本地保守兜底:', e.message);
             }
             
+            if (requestId !== dataRequestSeq || symbol !== currentSymbol) return;
             const assessment = assessTradeSignal(values, rows, interval);
             renderStrategySignal({
                 label: assessment.label,

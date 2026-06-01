@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cc-invest-webhook",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-01-01",
+  "compatibility_flags": ["global_fetch_strictly_public"],
+  "assets": {
+    "directory": "./public"
+  },
+  "observability": {
+    "enabled": true
+  },
+  // 环境变量配置
+  "vars": {
+    "WEBHOOK_TOKEN": "default_secret_change_me"
+  },
+  // KV 命名空间 (可选，用于持久化存储)
+  // "kv_namespaces": [
+  //   {
+  //     "binding": "ORDERS",
+  //     "id": "your-kv-namespace-id"
+  //   }
+  // ]
+}

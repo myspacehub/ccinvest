@@ -45,9 +45,8 @@ PROFILES: Dict[AssetClass, StrategyProfile] = {
     ),
     "us_equity": StrategyProfile(
         asset_class="us_equity",
-        min_bars=30
-        ,
-        min_confidence=50,
+        min_bars=50,
+        min_confidence=62,
         high_atr_pct=6.0,
         extreme_atr_pct=10.0,
         base_risk_pct=0.008,
@@ -172,8 +171,8 @@ class MultiAssetStrategyEngine:
             confidence -= 4 if asset_class == "crypto" else 8
             risk_notes.append("量能未确认，不适合激进追价。")
 
-        overbought = False
-        oversold = False
+        overbought = indicators["rsi"] > 80 or indicators["stoch_k"] > 92
+        oversold = indicators["rsi"] < 20 or indicators["stoch_k"] < 8
         if overbought:
             bull -= 1
             confidence -= 10
@@ -183,7 +182,7 @@ class MultiAssetStrategyEngine:
             confidence -= 10
             risk_notes.append("短线超卖，继续追空容易遭遇反抽。")
 
-        overextended = False  # 禁用以产生更多信号
+        overextended = indicators["distance_sma20_pct"] > max(profile.high_atr_pct * 1.5, atr_pct * profile.overextension_atr_multiple * 1.2)
         if overextended:
             confidence -= 12
             risk_notes.append("价格偏离20均线过远，等待回踩/反抽确认更务实。")
@@ -207,7 +206,7 @@ class MultiAssetStrategyEngine:
         confidence = int(max(0, min(92, confidence)))
         risk_pct = self._risk_pct(profile, confidence, atr_pct)
 
-        if bull >= 5 and gap >= 2 and confidence >= 50:
+        if bull >= 5 and gap >= 2 and confidence >= profile.min_confidence and not overbought and not overextended:
             stop = close - atr * (2.2 if asset_class == "crypto" else 1.8)
             target = close + atr * (3.0 if asset_class == "crypto" else 2.4)
             return self._result(
@@ -226,7 +225,7 @@ class MultiAssetStrategyEngine:
                 indicators,
             )
 
-        if bear >= 5 and gap >= 2 and confidence >= 50:
+        if bear >= 5 and gap >= 2 and confidence >= profile.min_confidence and not oversold:
             stop = close + atr * (2.0 if asset_class == "crypto" else 1.6)
             target = close - atr * (2.6 if asset_class == "crypto" else 2.1)
             return self._result(
