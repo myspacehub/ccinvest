@@ -1653,3 +1653,209 @@ async def webhook_us_equity_info(
     except Exception as e:
         logger.error(f"美股信息获取失败 [{symbol}]: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =====================================================
+# 美股每日/每周分析报告 API
+# =====================================================
+
+@app.get("/webhooks/daily_report", tags=["分析报告"])
+async def webhook_daily_report(
+    compact: bool = False,
+    x_webhook_signature: str = Header(None)
+):
+    """
+    Webhook: 生成每日美股分析报告
+    
+    **返回内容:**
+    - 市场概览（扫描股票数、上涨/下跌、市场广度、平均变化）
+    - 精选机会（强势买入、买入候选）
+    - 板块轮动（宏观信号、板块排名）
+    - 财报日历（本周、下周）
+    - 信号汇总
+    - 风险警示
+    - 交易建议
+    """
+    try:
+        if RATE_LIMIT_ENABLED:
+            if not rate_limiter.is_allowed("daily_report"):
+                raise HTTPException(status_code=429, detail="请求过于频繁")
+        
+        from src.analysis_report import generate_report, report_to_dict
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        
+        report = generate_report(report_type="daily")
+        data = report_to_dict(report)
+        
+        if compact:
+            return {
+                "period_label": report.period_label,
+                "market_signal": data["market_overview"].get("market_signal"),
+                "breadth_pct": data["market_overview"].get("breadth_pct"),
+                "strong_buys": [r["symbol"] for r in data["strong_buys"][:5]],
+                "macro_signal": data["sector_rotation"].get("macro_signal"),
+                "top_recommendation": data["recommendations"][0] if data["recommendations"] else None,
+                "stats": data["stats"],
+                "generated_at": report.generated_at,
+            }
+        
+        return {
+            "status": "success",
+            "report_type": "daily",
+            "data": data,
+            "timestamp": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"每日报告生成失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/webhooks/weekly_report", tags=["分析报告"])
+async def webhook_weekly_report(
+    compact: bool = False,
+    x_webhook_signature: str = Header(None)
+):
+    """
+    Webhook: 生成每周美股分析报告
+    """
+    try:
+        if RATE_LIMIT_ENABLED:
+            if not rate_limiter.is_allowed("weekly_report"):
+                raise HTTPException(status_code=429, detail="请求过于频繁")
+        
+        from src.analysis_report import generate_report, report_to_dict
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        
+        report = generate_report(report_type="weekly")
+        data = report_to_dict(report)
+        
+        if compact:
+            return {
+                "period_label": report.period_label,
+                "market_signal": data["market_overview"].get("market_signal"),
+                "strong_buys": [r["symbol"] for r in data["strong_buys"][:8]],
+                "macro_signal": data["sector_rotation"].get("macro_signal"),
+                "leading_sectors": data["sector_rotation"].get("top_performers", []),
+                "this_week_earnings": [c["symbol"] for c in data["earnings_calendar"].get("this_week", [])[:5]],
+                "stats": data["stats"],
+                "generated_at": report.generated_at,
+            }
+        
+        return {
+            "status": "success",
+            "report_type": "weekly",
+            "data": data,
+            "timestamp": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"每周报告生成失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/webhooks/sector_rotation", tags=["板块分析"])
+async def webhook_sector_rotation(
+    x_webhook_signature: str = Header(None)
+):
+    """
+    Webhook: 获取板块轮动分析
+    
+    返回所有板块的动量评分、相对强度、宏观信号
+    """
+    try:
+        if RATE_LIMIT_ENABLED:
+            if not rate_limiter.is_allowed("sector_rotation"):
+                raise HTTPException(status_code=429, detail="请求过于频繁")
+        
+        from src.sector_rotation import analyze_sector_rotation
+        
+        result = analyze_sector_rotation()
+        
+        return {
+            "status": "success",
+            "data": result,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"板块轮动分析失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/webhooks/earnings_calendar", tags=["财报日历"])
+async def webhook_earnings_calendar(
+    days: int = 28,
+    x_webhook_signature: str = Header(None)
+):
+    """
+    Webhook: 获取即将发布的财报日历
+    
+    **参数:**
+    - days: 前瞻天数（默认 28 天）
+    """
+    try:
+        if RATE_LIMIT_ENABLED:
+            if not rate_limiter.is_allowed("earnings_calendar"):
+                raise HTTPException(status_code=429, detail="请求过于频繁")
+        
+        from src.earnings_calendar import get_upcoming_earnings_analysis
+        
+        result = get_upcoming_earnings_analysis(n=30)
+        
+        return {
+            "status": "success",
+            "days_ahead": days,
+            "data": result,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"财报日历获取失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/webhooks/market_overview", tags=["市场概览"])
+async def webhook_market_overview(
+    x_webhook_signature: str = Header(None)
+):
+    """
+    Webhook: 获取市场概览（快速扫描）
+    """
+    try:
+        if RATE_LIMIT_ENABLED:
+            if not rate_limiter.is_allowed("market_overview"):
+                raise HTTPException(status_code=429, detail="请求过于频繁")
+        
+        from src.market_scanner import scan_market, detect_money_flow
+        
+        results = scan_market(top_n=500, min_score=0)
+        flow = detect_money_flow()
+        
+        gainers = len([r for r in results if r["change_1d"] > 0])
+        losers = len([r for r in results if r["change_1d"] < 0])
+        
+        return {
+            "status": "success",
+            "total_scanned": len(results),
+            "gainers": gainers,
+            "losers": losers,
+            "breadth_pct": round(gainers / max(1, len(results)) * 100, 1),
+            "avg_change_1d": round(sum(r["change_1d"] for r in results) / max(1, len(results)), 2),
+            "avg_change_1w": round(sum(r["change_1w"] for r in results) / max(1, len(results)), 2),
+            "sector_ranking": flow.get("sector_ranking", [])[:5],
+            "signal_counts": {
+                "STRONG_BUY": len([r for r in results if r["signal"] == "STRONG_BUY"]),
+                "BUY": len([r for r in results if r["signal"] == "BUY"]),
+                "HOLD": len([r for r in results if r["signal"] == "HOLD"]),
+                "SELL": len([r for r in results if r["signal"] == "SELL"]),
+                "STRONG_SELL": len([r for r in results if r["signal"] == "STRONG_SELL"]),
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"市场概览获取失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

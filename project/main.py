@@ -516,6 +516,55 @@ def signal(symbol: str, scan: str, deep: bool, json: bool):
 
 @cli.command()
 @click.confirmation_option(prompt='确定要启动完整系统吗？')
+
+@cli.command()
+@click.option("--type", "-t", "report_type", type=click.Choice(["daily", "weekly"]),
+              default="daily", help="report type")
+@click.option("--compact", "-c", is_flag=True, help="compact output")
+@click.option("--json", "-j", is_flag=True, help="json output")
+def analyze(report_type: str, compact: bool, json: bool):
+    """Generate daily or weekly US equity analysis report"""
+    console.print(Panel.fit(
+        "[bold cyan]US Equity Analysis Report[/bold cyan]",
+        "Market Overview | Top Picks | Sector Rotation | Earnings | Signals",
+        title="Analysis"
+    ))
+
+    from src.analysis_report import generate_report, report_to_dict, format_report_text
+
+    with console.status("[bold cyan]Generating report..."):
+        report = generate_report(report_type=report_type)
+
+    if json:
+        import json as json_mod
+        console.print(json_mod.dumps(report_to_dict(report), indent=2, ensure_ascii=False))
+    elif compact:
+        data = report_to_dict(report)
+        console.print(f"\n[bold]Report:[/bold] {report.period_label}")
+        mo = data["market_overview"]
+        sig_map = {"BULLISH": "green", "BEARISH": "red", "RISK_ON": "cyan",
+                   "RISK_OFF": "yellow", "NEUTRAL": "dim"}
+        sig_color = sig_map.get(mo.get("market_signal", ""), "white")
+        console.print(f"  Market: [{sig_color}]{mo.get('market_signal', 'N/A')}[/] | "
+                      f"Scanned: {mo.get('total_scanned', 0)} stocks")
+        if data["strong_buys"]:
+            picks = [r["symbol"] for r in data["strong_buys"][:5]]
+            console.print(f"  Strong Buys: {', '.join(picks)}")
+        if data["sector_rotation"].get("macro_signal"):
+            console.print(f"  Macro: [{sig_map.get(data['sector_rotation']['macro_signal'], 'dim')}]"
+                          f"{data['sector_rotation']['macro_signal']}[/]")
+        if data["recommendations"]:
+            top = data["recommendations"][0]
+            if top.get("entry_price"):
+                console.print(f"  Top Pick: [bold green]{top['symbol']}[/] @ "
+                              f"${top['entry_price']:.2f} (conf={top['confidence']*100:.0f}%)")
+    else:
+        text = format_report_text(report)
+        for line in text.split("\n"):
+            console.print(line)
+
+    console.print(f"\n[dim]Generated: {report.generated_at[:19]}[/dim]")
+
 def start():
     """启动完整系统（数据采集 + 模拟交易 + Webhook）"""
     console.print(Panel.fit(
