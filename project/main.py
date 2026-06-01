@@ -514,7 +514,6 @@ def signal(symbol: str, scan: str, deep: bool, json: bool):
                     console.print(line)
 
 
-@cli.command()
 @click.confirmation_option(prompt='确定要启动完整系统吗？')
 
 @cli.command()
