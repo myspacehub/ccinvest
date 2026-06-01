@@ -1,55 +1,43 @@
 #!/bin/bash
-# =====================================================
-# CC Invest - 快速启动脚本
-# =====================================================
+# ========================================
+#    CC Invest - 美股分析系统启动
+# ========================================
 
-set -e
-
-echo "🚀 CC Invest 系统启动脚本"
-echo "========================"
-
-# 检查 Python 版本
-if ! command -v python3 &> /dev/null; then
-    echo "❌ Python3 未安装"
-    exit 1
-fi
-
-# 检查目录
 cd "$(dirname "$0")"
 
-# 创建虚拟环境（如果需要）
-if [ ! -d "venv" ]; then
-    echo "📦 创建虚拟环境..."
-    python3 -m venv venv
+echo "========================================"
+echo "   CC Invest - 美股分析系统启动"
+echo "========================================"
+echo ""
+
+# 检查 Python
+echo "[1/3] 检查 Python 环境..."
+if ! command -v python3 &> /dev/null; then
+    echo "[错误] 未找到 Python3，请先安装"
+    exit 1
 fi
+echo "✓ Python $(python3 --version | cut -d' ' -f2)"
 
-# 激活虚拟环境
-source venv/bin/activate
+# 检查依赖
+echo "[2/3] 检查依赖..."
+python3 -c "import loguru" 2>/dev/null
+if [ $? -ne 0 ]; then
+    echo "  安装依赖中..."
+    pip3 install -q -r requirements.txt
+fi
+echo "✓ 依赖就绪"
 
-# 安装依赖
-echo "📥 安装依赖..."
-pip install -q -r requirements.txt
-
-# 初始化数据库
-echo "🗄️ 初始化数据库..."
-python main.py init
-
-# 显示帮助
+# 启动服务
+echo "[3/3] 启动 Webhook 服务..."
 echo ""
-echo "✅ 安装完成！使用以下命令启动："
+echo "服务地址:"
+echo "  • Dashboard:  http://localhost:10000/reports/dashboard.html"
+echo "  • API 文档:   http://localhost:10000/docs"
+echo "  • 每日报告:   http://localhost:10000/webhooks/daily_report"
+echo "  • 每周报告:   http://localhost:10000/webhooks/weekly_report"
 echo ""
-echo "  python main.py status     # 查看系统状态"
-echo "  python main.py collect   # 采集数据"
-echo "  python main.py backtest # 运行回测"
-echo "  python main.py trade     # 启动模拟交易"
-echo "  python main.py webhook  # 启动 API 服务"
-echo "  python main.py start    # 启动完整系统"
-echo ""
-echo "  python main.py --help   # 查看所有命令"
-echo ""
-echo "🌐 API 文档: http://localhost:10000/docs"
+echo "按 Ctrl+C 停止服务"
+echo "========================================"
 echo ""
 
-# 启动 Webhook 服务作为示例
-echo "🚀 启动 Webhook 服务..."
-python main.py webhook
+python3 main.py webhook
