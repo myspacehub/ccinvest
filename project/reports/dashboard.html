@@ -61,6 +61,48 @@
         .market-neutral { background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%); }
         .tab-active { background: #6366f1 !important; }
         .stock-card:hover { transform: translateY(-2px); border-color: #6366f1; }
+
+        .bg-slate-800 { background-color: #1e293b; }
+        .bg-slate-700 { background-color: #334155; }
+        .text-white { color: #fff; }
+        .text-gray-400 { color: #9ca3af; }
+        .text-green-400 { color: #4ade80; }
+        .text-red-400 { color: #f87171; }
+        .text-blue-400 { color: #60a5fa; }
+        .rounded-lg { border-radius: 8px; }
+        .rounded-full { border-radius: 9999px; }
+        .px-4 { padding-left: 16px; padding-right: 16px; }
+        .py-2 { padding-top: 8px; padding-bottom: 8px; }
+        .mb-4 { margin-bottom: 16px; }
+        .mb-6 { margin-bottom: 24px; }
+        .mt-1 { margin-top: 4px; }
+        .mt-2 { margin-top: 8px; }
+        .gap-2 { gap: 8px; }
+        .gap-4 { gap: 16px; }
+        .p-4 { padding: 16px; }
+        .p-6 { padding: 24px; }
+        .flex { display: flex; }
+        .grid { display: grid; }
+        .hidden { display: none; }
+        .block { display: block; }
+        .items-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .space-y-2 > * + * { margin-top: 8px; }
+        .border-l-4 { border-left-width: 4px; }
+        .border-green-500 { border-color: #22c55e; }
+        .border-red-500 { border-color: #ef4444; }
+        .border-yellow-500 { border-color: #eab308; }
+        .font-bold { font-weight: 700; }
+        .text-2xl { font-size: 24px; }
+        .text-xl { font-size: 20px; }
+        .text-lg { font-size: 18px; }
+        .text-sm { font-size: 14px; }
+        .text-xs { font-size: 12px; }
+        .uppercase { text-transform: uppercase; }
+        .text-center { text-align: center; }
+        .mx-auto { margin-left: auto; margin-right: auto; }
+        .w-full { width: 100%; }
+
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-6">
@@ -288,8 +330,6 @@
         </div>
 
         <!-- ==================== 加密货币交易面板（默认显示）==================== -->
-        </div>
-
         <div id="crypto-panel">
             <!-- Account Cards -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -1594,5 +1634,6 @@
             }, 60000);
         });
     </script>
+</div>
 </body>
 </html>
