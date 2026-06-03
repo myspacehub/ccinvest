@@ -1668,6 +1668,471 @@ async def webhook_us_equity_info(
 # 美股每日/每周分析报告 API
 # =====================================================
 
+COMPACT_EQUITY_REPORT_TTL_SECONDS = 600
+_COMPACT_EQUITY_REPORT_CACHE: Dict[str, Dict[str, Any]] = {}
+
+COMPACT_EQUITY_UNIVERSE = [
+    "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL",
+    "TSLA", "AVGO", "JPM", "LLY", "XOM", "UNH"
+]
+
+COMPACT_SECTOR_ETFS = {
+    "XLK": "科技",
+    "XLF": "金融",
+    "XLE": "能源",
+    "XLV": "医疗保健",
+    "XLY": "非必需消费",
+    "XLP": "必需消费",
+    "XLI": "工业",
+    "XLU": "公用事业",
+    "XLB": "材料",
+    "XLRE": "房地产",
+    "XLC": "通信服务",
+}
+
+COMPACT_EQUITY_REPORT_SOURCES = [
+    "Yahoo Finance chart API",
+    "Stooq daily CSV",
+    "Nasdaq earnings calendar API",
+]
+
+
+def _pct_change(current: Optional[float], previous: Optional[float]) -> Optional[float]:
+    if current is None or previous in (None, 0):
+        return None
+    return (current - previous) / previous * 100
+
+
+def _compact_report_score(snapshot: Dict[str, Any]) -> float:
+    score = 50.0
+    score += float(snapshot.get("change_1d") or 0) * 2.0
+    score += float(snapshot.get("change_1w") or 0) * 1.4
+    score += float(snapshot.get("change_1m") or 0) * 0.8
+    return round(max(0.0, min(100.0, score)), 1)
+
+
+def _compact_signal(score: float) -> str:
+    if score >= 68:
+        return "STRONG_BUY"
+    if score >= 58:
+        return "BUY"
+    if score <= 38:
+        return "SELL"
+    return "HOLD"
+
+
+def _build_compact_snapshot(
+    symbol: str,
+    current: float,
+    closes: List[float],
+    source: str,
+    previous: Optional[float] = None,
+    volumes: Optional[List[int]] = None,
+) -> Optional[Dict[str, Any]]:
+    if not closes:
+        return None
+
+    previous = previous if previous is not None else (closes[-2] if len(closes) >= 2 else None)
+    change_1d = _pct_change(current, float(previous)) if previous else None
+    change_1w = _pct_change(current, closes[-6] if len(closes) >= 6 else closes[0])
+    change_1m = _pct_change(current, closes[-23] if len(closes) >= 23 else closes[0])
+    score_source = {
+        "change_1d": change_1d or 0,
+        "change_1w": change_1w or 0,
+        "change_1m": change_1m or 0,
+    }
+    score = _compact_report_score(score_source)
+
+    return {
+        "symbol": symbol,
+        "price": round(current, 2),
+        "change_1d": round(change_1d or 0, 2),
+        "change_1w": round(change_1w or 0, 2),
+        "change_1m": round(change_1m or 0, 2),
+        "volume": volumes[-1] if volumes else None,
+        "score": score,
+        "signal": _compact_signal(score),
+        "source": source,
+    }
+
+
+def _fetch_yahoo_chart_snapshot(symbol: str, range_value: str = "3mo") -> Optional[Dict[str, Any]]:
+    try:
+        import requests
+
+        response = requests.get(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+            params={"interval": "1d", "range": range_value},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=4,
+        )
+        if not response.ok:
+            logger.debug(f"Yahoo chart 请求失败 [{symbol}]: {response.status_code}")
+            return None
+
+        result = (response.json().get("chart", {}).get("result") or [None])[0]
+        if not result:
+            return None
+
+        meta = result.get("meta", {})
+        quote = (result.get("indicators", {}).get("quote") or [{}])[0]
+        closes = [float(value) for value in quote.get("close", []) if value is not None]
+        volumes = [int(value) for value in quote.get("volume", []) if value is not None]
+        if not closes:
+            return None
+
+        current = float(meta.get("regularMarketPrice") or closes[-1])
+        previous = meta.get("previousClose") or meta.get("chartPreviousClose")
+        return _build_compact_snapshot(
+            symbol=symbol,
+            current=current,
+            closes=closes,
+            previous=float(previous) if previous else None,
+            volumes=volumes,
+            source="Yahoo Finance chart API",
+        )
+    except Exception as exc:
+        logger.debug(f"Yahoo chart 数据获取失败 [{symbol}]: {exc}")
+        return None
+
+
+def _fetch_stooq_chart_snapshot(symbol: str) -> Optional[Dict[str, Any]]:
+    try:
+        import csv
+        import io
+        import requests
+
+        response = requests.get(
+            "https://stooq.com/q/d/l/",
+            params={"s": f"{symbol.lower()}.us", "i": "d"},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=4,
+        )
+        if not response.ok or "Date,Open,High,Low,Close,Volume" not in response.text:
+            logger.debug(f"Stooq chart 请求失败 [{symbol}]: {response.status_code}")
+            return None
+
+        rows = list(csv.DictReader(io.StringIO(response.text)))
+        recent_rows = rows[-65:]
+        closes = [float(row["Close"]) for row in recent_rows if row.get("Close") not in (None, "")]
+        volumes = [
+            int(float(row["Volume"]))
+            for row in recent_rows
+            if row.get("Volume") not in (None, "")
+        ]
+        if not closes:
+            return None
+        return _build_compact_snapshot(
+            symbol=symbol,
+            current=closes[-1],
+            closes=closes,
+            volumes=volumes,
+            source="Stooq daily CSV",
+        )
+    except Exception as exc:
+        logger.debug(f"Stooq chart 数据获取失败 [{symbol}]: {exc}")
+        return None
+
+
+def _fetch_public_chart_snapshot(symbol: str) -> Optional[Dict[str, Any]]:
+    return _fetch_yahoo_chart_snapshot(symbol) or _fetch_stooq_chart_snapshot(symbol)
+
+
+def _fetch_compact_snapshots(symbols: List[str], max_workers: int = 8) -> List[Dict[str, Any]]:
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
+
+    snapshots: List[Dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_fetch_public_chart_snapshot, symbol): symbol for symbol in symbols}
+        try:
+            completed = as_completed(futures, timeout=9)
+            for future in completed:
+                try:
+                    snapshot = future.result(timeout=0)
+                except Exception as exc:
+                    logger.debug(f"快速报告快照任务失败 [{futures[future]}]: {exc}")
+                    continue
+                if snapshot:
+                    snapshots.append(snapshot)
+        except TimeoutError:
+            logger.warning("快速报告公开行情源响应超时，返回已获取的数据")
+            for future in futures:
+                future.cancel()
+    return snapshots
+
+
+def _compact_trade_plan(item: Dict[str, Any]) -> Dict[str, Any]:
+    price = float(item.get("price") or 0)
+    stop_loss = round(price * 0.93, 2) if price else None
+    take_profit = round(price * 1.12, 2) if price else None
+    return {
+        "symbol": item.get("symbol"),
+        "action": item.get("signal"),
+        "score": item.get("score"),
+        "entry_price": price or None,
+        "stop_loss": stop_loss,
+        "take_profit_1": take_profit,
+    }
+
+
+def _parse_market_cap(value: str) -> float:
+    if not value or value == "N/A":
+        return 0.0
+    cleaned = value.replace("$", "").replace(",", "").strip()
+    try:
+        return float(cleaned)
+    except ValueError:
+        return 0.0
+
+
+def _format_earnings_time(value: str) -> str:
+    mapping = {
+        "time-after-hours": "盘后",
+        "time-pre-market": "盘前",
+        "time-not-supplied": "待定",
+    }
+    return mapping.get(value or "", value or "待定")
+
+
+def _fetch_nasdaq_earnings_for_date(target_date: Any) -> List[Dict[str, Any]]:
+    try:
+        import requests
+
+        response = requests.get(
+            "https://api.nasdaq.com/api/calendar/earnings",
+            params={"date": target_date.isoformat()},
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "application/json, text/plain, */*",
+                "Origin": "https://www.nasdaq.com",
+                "Referer": "https://www.nasdaq.com/",
+            },
+            timeout=3,
+        )
+        if not response.ok:
+            logger.debug(f"Nasdaq 财报日历请求失败 [{target_date}]: {response.status_code}")
+            return []
+
+        rows = response.json().get("data", {}).get("rows") or []
+        events = []
+        for row in rows:
+            symbol = row.get("symbol")
+            if not symbol:
+                continue
+            earnings_time = _format_earnings_time(row.get("time"))
+            events.append({
+                "symbol": symbol,
+                "name": row.get("name") or symbol,
+                "earnings_date": target_date.isoformat(),
+                "earnings_time": earnings_time,
+                "days_to_earnings": None,
+                "eps_forecast": row.get("epsForecast") or "",
+                "market_cap": row.get("marketCap") or "",
+                "market_cap_value": _parse_market_cap(row.get("marketCap") or ""),
+                "score": f"{target_date.strftime('%m-%d')} {earnings_time}",
+                "source": "Nasdaq earnings calendar API",
+            })
+        return events
+    except Exception as exc:
+        logger.debug(f"Nasdaq 财报日历数据获取失败 [{target_date}]: {exc}")
+        return []
+
+
+def _fetch_compact_earnings_calendar() -> Dict[str, List[Dict[str, Any]]]:
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
+    from datetime import timedelta
+
+    today = datetime.utcnow().date()
+    target_dates = [today + timedelta(days=offset) for offset in range(15)]
+    events: List[Dict[str, Any]] = []
+
+    with ThreadPoolExecutor(max_workers=len(target_dates)) as executor:
+        futures = {executor.submit(_fetch_nasdaq_earnings_for_date, day): day for day in target_dates}
+        try:
+            for future in as_completed(futures, timeout=7):
+                try:
+                    events.extend(future.result(timeout=0))
+                except Exception as exc:
+                    logger.debug(f"快速财报日历任务失败 [{futures[future]}]: {exc}")
+        except TimeoutError:
+            logger.warning("快速财报日历响应超时，返回已获取的数据")
+            for future in futures:
+                future.cancel()
+
+    for event in events:
+        event_date = datetime.strptime(event["earnings_date"], "%Y-%m-%d").date()
+        event["days_to_earnings"] = (event_date - today).days
+
+    events.sort(key=lambda item: (item.get("days_to_earnings", 999), -item.get("market_cap_value", 0)))
+    this_week = [
+        {key: value for key, value in event.items() if key != "market_cap_value"}
+        for event in events
+        if event.get("days_to_earnings") is not None and 0 <= event["days_to_earnings"] <= 7
+    ][:8]
+    next_week = [
+        {key: value for key, value in event.items() if key != "market_cap_value"}
+        for event in events
+        if event.get("days_to_earnings") is not None and 7 < event["days_to_earnings"] <= 14
+    ][:8]
+
+    return {
+        "this_week": this_week,
+        "next_week": next_week,
+    }
+
+
+def _empty_compact_equity_report(report_type: str, reason: str) -> Dict[str, Any]:
+    now = datetime.utcnow().isoformat()
+    period_label = "每周市场扫描" if report_type == "weekly" else "每日市场扫描"
+    return {
+        "status": "success",
+        "report_type": report_type,
+        "period_label": period_label,
+        "generated_at": now,
+        "timestamp": now,
+        "source": COMPACT_EQUITY_REPORT_SOURCES,
+        "market_overview": {
+            "market_signal": "DATA_DELAYED",
+            "breadth_pct": None,
+        },
+        "market_signal": "DATA_DELAYED",
+        "breadth_pct": None,
+        "macro_signal": "DATA_DELAYED",
+        "stats": {
+            "scanned": 0,
+            "scan_count": 0,
+            "up_count": 0,
+            "down_count": 0,
+        },
+        "strong_buys": [],
+        "buy_candidates": [],
+        "sector_ranking": [],
+        "recommendations": [],
+        "earnings_calendar": {
+            "this_week": [],
+            "next_week": [],
+        },
+        "risk_warnings": [reason],
+    }
+
+
+def build_compact_equity_report(report_type: str) -> Dict[str, Any]:
+    cache_key = f"compact_equity_report:{report_type}"
+    cached = _COMPACT_EQUITY_REPORT_CACHE.get(cache_key)
+    now_epoch = time.time()
+    if cached and now_epoch - cached.get("_cached_at", 0) < COMPACT_EQUITY_REPORT_TTL_SECONDS:
+        data = cached["data"].copy()
+        data["cache"] = "hit"
+        return data
+
+    sector_symbols = list(COMPACT_SECTOR_ETFS.keys())
+    all_symbols = COMPACT_EQUITY_UNIVERSE + sector_symbols
+    all_snapshots = _fetch_compact_snapshots(all_symbols, max_workers=min(24, len(all_symbols)))
+    snapshots = [item for item in all_snapshots if item.get("symbol") in COMPACT_EQUITY_UNIVERSE]
+    sectors = [item for item in all_snapshots if item.get("symbol") in COMPACT_SECTOR_ETFS]
+    earnings_calendar = _fetch_compact_earnings_calendar()
+    if not snapshots:
+        data = _empty_compact_equity_report(
+            report_type,
+            "快速报告公开行情源暂不可用，请稍后刷新。"
+        )
+        data["earnings_calendar"] = earnings_calendar
+        _COMPACT_EQUITY_REPORT_CACHE[cache_key] = {"data": data, "_cached_at": now_epoch}
+        return data
+
+    snapshots.sort(key=lambda item: item.get("score", 0), reverse=True)
+    up_count = len([item for item in snapshots if item.get("change_1d", 0) > 0])
+    down_count = len([item for item in snapshots if item.get("change_1d", 0) < 0])
+    breadth_pct = round(up_count / max(1, len(snapshots)) * 100, 1)
+    avg_change_1d = round(
+        sum(float(item.get("change_1d") or 0) for item in snapshots) / max(1, len(snapshots)),
+        2,
+    )
+
+    if breadth_pct >= 60 and avg_change_1d >= 0:
+        market_signal = "RISK_ON"
+    elif breadth_pct <= 40 and avg_change_1d < 0:
+        market_signal = "RISK_OFF"
+    else:
+        market_signal = "NEUTRAL"
+
+    sector_ranking = []
+    for item in sorted(sectors, key=lambda row: row.get("change_1m", 0), reverse=True):
+        symbol = item.get("symbol")
+        change_1m = item.get("change_1m", 0)
+        sector_ranking.append({
+            "symbol": symbol,
+            "name": COMPACT_SECTOR_ETFS.get(symbol, symbol),
+            "sector": COMPACT_SECTOR_ETFS.get(symbol, symbol),
+            "score": item.get("score"),
+            "change_pct": f"{change_1m:+.2f}%",
+            "flow": "INFLOW" if change_1m >= 0 else "OUTFLOW",
+            "signal": item.get("signal"),
+        })
+
+    sector_avg = (
+        sum(float(item.get("change_1m") or 0) for item in sectors) / len(sectors)
+        if sectors else 0
+    )
+    if sector_avg > 1:
+        macro_signal = "RISK_ON"
+    elif sector_avg < -1:
+        macro_signal = "RISK_OFF"
+    else:
+        macro_signal = "NEUTRAL"
+
+    strong_buys = [item for item in snapshots if item.get("signal") == "STRONG_BUY"][:5]
+    buy_candidates = [item for item in snapshots if item.get("signal") in ("STRONG_BUY", "BUY")][:8]
+    recommendations = [_compact_trade_plan(item) for item in buy_candidates[:6]]
+
+    risk_warnings = []
+    if market_signal == "RISK_OFF":
+        risk_warnings.append("市场广度偏弱，建议降低仓位并等待确认。")
+    if breadth_pct < 45:
+        risk_warnings.append("上涨股票占比低于 45%，追高风险上升。")
+    if not sector_ranking:
+        risk_warnings.append("板块轮动数据暂缺，请结合盘中行情复核。")
+    if not earnings_calendar["this_week"] and not earnings_calendar["next_week"]:
+        risk_warnings.append("财报日历暂缺，请在交易前单独复核公司事件。")
+    if not risk_warnings:
+        risk_warnings.append("快速报告仅用于盘前/盘中筛选，交易前请复核价格、成交量与财报事件。")
+
+    generated_at = datetime.utcnow().isoformat()
+    period_label = "每周市场扫描" if report_type == "weekly" else "每日市场扫描"
+    data = {
+        "status": "success",
+        "report_type": report_type,
+        "period_label": period_label,
+        "generated_at": generated_at,
+        "timestamp": generated_at,
+        "source": COMPACT_EQUITY_REPORT_SOURCES,
+        "market_overview": {
+            "market_signal": market_signal,
+            "breadth_pct": breadth_pct,
+            "avg_change_1d": avg_change_1d,
+        },
+        "market_signal": market_signal,
+        "breadth_pct": breadth_pct,
+        "macro_signal": macro_signal,
+        "stats": {
+            "scanned": len(snapshots),
+            "scan_count": len(snapshots),
+            "total_stocks_scanned": len(snapshots),
+            "up_count": up_count,
+            "down_count": down_count,
+        },
+        "strong_buys": strong_buys,
+        "buy_candidates": buy_candidates,
+        "sector_ranking": sector_ranking[:8],
+        "recommendations": recommendations,
+        "earnings_calendar": earnings_calendar,
+        "risk_warnings": risk_warnings,
+        "cache": "miss",
+    }
+    _COMPACT_EQUITY_REPORT_CACHE[cache_key] = {"data": data, "_cached_at": now_epoch}
+    return data
+
+
 @app.get("/webhooks/daily_report", tags=["分析报告"])
 async def webhook_daily_report(
     compact: bool = False,
@@ -1689,6 +2154,9 @@ async def webhook_daily_report(
         if RATE_LIMIT_ENABLED:
             if not rate_limiter.is_allowed("daily_report"):
                 raise HTTPException(status_code=429, detail="请求过于频繁")
+
+        if compact:
+            return build_compact_equity_report("daily")
         
         from src.analysis_report import generate_report, report_to_dict
         from datetime import datetime
@@ -1696,18 +2164,6 @@ async def webhook_daily_report(
         
         report = generate_report(report_type="daily")
         data = report_to_dict(report)
-        
-        if compact:
-            return {
-                "period_label": report.period_label,
-                "market_signal": data["market_overview"].get("market_signal"),
-                "breadth_pct": data["market_overview"].get("breadth_pct"),
-                "strong_buys": [r["symbol"] for r in data["strong_buys"][:5]],
-                "macro_signal": data["sector_rotation"].get("macro_signal"),
-                "top_recommendation": data["recommendations"][0] if data["recommendations"] else None,
-                "stats": data["stats"],
-                "generated_at": report.generated_at,
-            }
         
         return {
             "status": "success",
@@ -1733,6 +2189,9 @@ async def webhook_weekly_report(
         if RATE_LIMIT_ENABLED:
             if not rate_limiter.is_allowed("weekly_report"):
                 raise HTTPException(status_code=429, detail="请求过于频繁")
+
+        if compact:
+            return build_compact_equity_report("weekly")
         
         from src.analysis_report import generate_report, report_to_dict
         from datetime import datetime
@@ -1740,18 +2199,6 @@ async def webhook_weekly_report(
         
         report = generate_report(report_type="weekly")
         data = report_to_dict(report)
-        
-        if compact:
-            return {
-                "period_label": report.period_label,
-                "market_signal": data["market_overview"].get("market_signal"),
-                "strong_buys": [r["symbol"] for r in data["strong_buys"][:8]],
-                "macro_signal": data["sector_rotation"].get("macro_signal"),
-                "leading_sectors": data["sector_rotation"].get("top_performers", []),
-                "this_week_earnings": [c["symbol"] for c in data["earnings_calendar"].get("this_week", [])[:5]],
-                "stats": data["stats"],
-                "generated_at": report.generated_at,
-            }
         
         return {
             "status": "success",
