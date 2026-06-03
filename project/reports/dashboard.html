@@ -835,7 +835,9 @@
                     throw new Error(`API error: ${res.status}`);
                 }
                 
-                const data = await res.json();
+                const response = await res.json();
+                // API 返回 {status, symbol, data, timestamp}，需要提取 data 字段
+                const data = response.data || response;
                 renderStockAnalysis(symbol, data);
                 
             } catch (e) {
