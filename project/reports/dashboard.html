@@ -3,532 +3,1805 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CC Invest - 多链代币行情 & 美股分析</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" rel="stylesheet">
+    <title>CC Invest - 多资产行情与策略仪表盘</title>
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
     <style>
-        body { background: #0a0e1a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-        .card { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 1px solid #334155; border-radius: 12px; }
-        .chain-solana { background: linear-gradient(135deg, #9945FF 0%, #14F195 100%); }
-        .chain-bsc { background: linear-gradient(135deg, #F0B90B 0%, #141523 100%); }
-        .chain-eth { background: linear-gradient(135deg, #627EEA 0%, #1a1a2e 100%); }
-        .chain-base { background: linear-gradient(135deg, #005288 0%, #00D4FF 100%); }
-        .signal-buy { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); }
-        .signal-sell { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
-        .signal-hold { background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%); }
-        .pulse { animation: pulse 2s infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
-        .chain-btn:hover { transform: scale(1.05); transition: transform 0.2s; }
-        .spinner { border: 3px solid #334155; border-top: 3px solid #3b82f6; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .indicator-positive { border-left: 4px solid #22c55e; }
-        .indicator-negative { border-left: 4px solid #ef4444; }
-        .indicator-neutral { border-left: 4px solid #eab308; }
+        :root {
+            color-scheme: dark;
+            --bg: #0c1011;
+            --surface: #111719;
+            --surface-2: #161f22;
+            --surface-3: #1d292d;
+            --border: #29383d;
+            --border-soft: #223035;
+            --text: #edf3f1;
+            --muted: #9baaa6;
+            --faint: #687774;
+            --green: #35d07f;
+            --green-soft: rgba(53, 208, 127, 0.16);
+            --red: #ff6b6b;
+            --red-soft: rgba(255, 107, 107, 0.16);
+            --amber: #f2c14e;
+            --amber-soft: rgba(242, 193, 78, 0.16);
+            --blue: #64a8ff;
+            --blue-soft: rgba(100, 168, 255, 0.16);
+            --purple: #b18cff;
+            --shadow: 0 18px 48px rgba(0, 0, 0, 0.26);
+            --radius: 8px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            min-width: 320px;
+            background: var(--bg);
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            color: var(--text);
+            background:
+                linear-gradient(180deg, #111619 0%, #0c1011 48%, #11100c 100%);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            letter-spacing: 0;
+        }
+
+        button,
+        input {
+            font: inherit;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+            opacity: 0.58;
+        }
+
+        .app-shell {
+            width: min(1420px, calc(100% - 32px));
+            margin: 0 auto;
+            padding: 24px 0 40px;
+        }
+
+        .topbar {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 20px;
+            align-items: end;
+            margin-bottom: 18px;
+        }
+
+        .brand-block {
+            min-width: 0;
+        }
+
+        .eyebrow {
+            margin: 0 0 8px;
+            color: var(--green);
+            font-size: 0.76rem;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        h1,
+        h2,
+        h3,
+        p {
+            margin-top: 0;
+        }
+
+        h1 {
+            margin-bottom: 8px;
+            font-size: 3.6rem;
+            line-height: 0.98;
+            letter-spacing: 0;
+        }
+
+        .subtitle {
+            max-width: 720px;
+            margin-bottom: 0;
+            color: var(--muted);
+            font-size: 1rem;
+            line-height: 1.55;
+        }
+
+        .status-panel {
+            display: grid;
+            gap: 8px;
+            justify-items: end;
+            min-width: 228px;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: rgba(17, 23, 25, 0.82);
+        }
+
+        .status-line {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            color: var(--muted);
+            font-size: 0.92rem;
+        }
+
+        .status-dot {
+            width: 9px;
+            height: 9px;
+            flex: 0 0 auto;
+            border-radius: 50%;
+            background: var(--faint);
+        }
+
+        .status-dot.ready {
+            background: var(--green);
+            box-shadow: 0 0 0 6px rgba(53, 208, 127, 0.1);
+        }
+
+        .status-dot.loading {
+            background: var(--amber);
+            box-shadow: 0 0 0 6px rgba(242, 193, 78, 0.1);
+            animation: breathe 1.4s ease-in-out infinite;
+        }
+
+        .status-dot.error {
+            background: var(--red);
+            box-shadow: 0 0 0 6px rgba(255, 107, 107, 0.1);
+        }
+
+        .api-origin {
+            max-width: 260px;
+            color: var(--faint);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.72rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        @keyframes breathe {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(0.78); opacity: 0.7; }
+        }
+
+        .market-strip {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .market-card,
+        .metric-card,
+        .data-card,
+        .report-card,
+        .control-panel {
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: linear-gradient(180deg, rgba(22, 31, 34, 0.98), rgba(15, 21, 23, 0.98));
+            box-shadow: var(--shadow);
+        }
+
+        .market-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 92px;
+            padding: 16px;
+            overflow: hidden;
+        }
+
+        .market-name,
+        .metric-label,
+        .detail-label {
+            color: var(--muted);
+            font-size: 0.74rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .market-price {
+            margin-top: 8px;
+            font-size: 1.42rem;
+            font-weight: 800;
+        }
+
+        .market-change {
+            flex: 0 0 auto;
+            padding: 6px 8px;
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius);
+            color: var(--muted);
+            font-size: 0.92rem;
+            font-weight: 800;
+        }
+
+        .control-panel {
+            margin-bottom: 14px;
+            padding: 16px;
+        }
+
+        .control-grid {
+            display: grid;
+            grid-template-columns: minmax(240px, 0.96fr) minmax(280px, 1.36fr);
+            gap: 14px;
+            align-items: start;
+        }
+
+        .chain-controls,
+        .mode-tabs,
+        .interval-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .chain-btn,
+        .mode-tab,
+        .interval-btn,
+        .popular-token,
+        .primary-action {
+            min-height: 40px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text);
+            background: var(--surface-2);
+            transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+        }
+
+        .chain-btn,
+        .mode-tab,
+        .interval-btn {
+            padding: 0 12px;
+            font-weight: 800;
+        }
+
+        .chain-btn:hover,
+        .mode-tab:hover,
+        .interval-btn:hover,
+        .popular-token:hover,
+        .primary-action:hover {
+            transform: translateY(-1px);
+            border-color: #496166;
+        }
+
+        .chain-btn.active,
+        .mode-tab.active,
+        .interval-btn.active {
+            border-color: rgba(53, 208, 127, 0.74);
+            background: var(--green-soft);
+            color: #dfffee;
+        }
+
+        .chain-solana.active { border-color: var(--purple); background: rgba(177, 140, 255, 0.16); }
+        .chain-bsc.active { border-color: var(--amber); background: var(--amber-soft); color: #fff2c6; }
+        .chain-base.active { border-color: var(--blue); background: var(--blue-soft); }
+
+        .search-stack {
+            display: grid;
+            gap: 10px;
+        }
+
+        .search-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 10px;
+        }
+
+        .search-input {
+            width: 100%;
+            min-height: 44px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            outline: none;
+            padding: 0 12px;
+            color: var(--text);
+            background: #0f1517;
+        }
+
+        .search-input:focus {
+            border-color: var(--green);
+            box-shadow: 0 0 0 3px rgba(53, 208, 127, 0.12);
+        }
+
+        .primary-action {
+            min-width: 112px;
+            padding: 0 18px;
+            border-color: rgba(53, 208, 127, 0.65);
+            background: linear-gradient(180deg, #2eb971, #228d59);
+            color: #06120c;
+            font-weight: 900;
+        }
+
+        .popular-tokens {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            min-height: 34px;
+        }
+
+        .popular-token {
+            min-height: 32px;
+            padding: 0 10px;
+            color: var(--muted);
+            font-size: 0.84rem;
+            font-weight: 800;
+        }
+
+        .mode-tabs {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-soft);
+        }
+
+        .content-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.6fr) minmax(330px, 0.86fr);
+            gap: 14px;
+            align-items: start;
+        }
+
+        .main-column,
+        .side-column,
+        .report-view {
+            display: grid;
+            gap: 14px;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .metric-card {
+            min-height: 96px;
+            padding: 16px;
+        }
+
+        .metric-value {
+            margin-top: 8px;
+            font-size: 1.55rem;
+            font-weight: 900;
+            overflow-wrap: anywhere;
+        }
+
+        .data-card,
+        .report-card {
+            padding: 18px;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .card-title {
+            margin-bottom: 0;
+            font-size: 1.04rem;
+            line-height: 1.25;
+        }
+
+        .card-note {
+            margin-bottom: 0;
+            color: var(--faint);
+            font-size: 0.82rem;
+        }
+
+        .token-heading {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr);
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .token-logo {
+            width: 46px;
+            height: 46px;
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            background: var(--surface-3);
+            object-fit: cover;
+        }
+
+        .token-symbol {
+            font-size: 1.46rem;
+            font-weight: 900;
+            overflow-wrap: anywhere;
+        }
+
+        .token-name {
+            color: var(--muted);
+            overflow-wrap: anywhere;
+        }
+
+        .token-details {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .detail-item {
+            min-height: 76px;
+            padding: 12px;
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius);
+            background: rgba(255, 255, 255, 0.018);
+        }
+
+        .detail-value {
+            margin-top: 6px;
+            font-weight: 900;
+            overflow-wrap: anywhere;
+        }
+
+        .chart-shell {
+            min-height: 452px;
+        }
+
+        .chart {
+            width: 100%;
+            height: 382px;
+        }
+
+        .empty-state {
+            display: grid;
+            place-items: center;
+            min-height: 180px;
+            border: 1px dashed var(--border);
+            border-radius: var(--radius);
+            color: var(--muted);
+            text-align: center;
+            padding: 18px;
+        }
+
+        .signal-score-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .signal-score {
+            min-height: 96px;
+            padding: 12px;
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius);
+            background: rgba(255, 255, 255, 0.018);
+        }
+
+        .signal-number {
+            margin-top: 8px;
+            font-size: 1.7rem;
+            font-weight: 900;
+        }
+
+        .signal-badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 34px;
+            margin-top: 8px;
+            padding: 0 10px;
+            border: 1px solid var(--amber);
+            border-radius: var(--radius);
+            background: var(--amber-soft);
+            color: #ffe8aa;
+            font-weight: 900;
+        }
+
+        .signal-badge.signal-buy {
+            border-color: var(--green);
+            background: var(--green-soft);
+            color: #dfffee;
+        }
+
+        .signal-badge.signal-sell {
+            border-color: var(--red);
+            background: var(--red-soft);
+            color: #ffd7d7;
+        }
+
+        .meter {
+            height: 7px;
+            margin-top: 10px;
+            border-radius: var(--radius);
+            background: #0b1012;
+            overflow: hidden;
+        }
+
+        .meter-fill {
+            width: 0%;
+            height: 100%;
+            border-radius: var(--radius);
+            background: linear-gradient(90deg, var(--amber), var(--green));
+            transition: width 0.24s ease;
+        }
+
+        .reason-list {
+            display: grid;
+            gap: 8px;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+            color: var(--muted);
+            font-size: 0.92rem;
+            line-height: 1.46;
+        }
+
+        .reason-list li {
+            padding: 10px;
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius);
+            background: rgba(255, 255, 255, 0.018);
+        }
+
+        .risk-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .risk-item {
+            padding: 10px;
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius);
+            background: rgba(255, 255, 255, 0.018);
+        }
+
+        .risk-value {
+            margin-top: 6px;
+            font-weight: 900;
+        }
+
+        .indicators-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .indicator-card {
+            min-height: 86px;
+            padding: 12px;
+            border: 1px solid var(--border-soft);
+            border-left: 4px solid var(--amber);
+            border-radius: var(--radius);
+            background: rgba(255, 255, 255, 0.018);
+        }
+
+        .indicator-card.positive {
+            border-left-color: var(--green);
+        }
+
+        .indicator-card.negative {
+            border-left-color: var(--red);
+        }
+
+        .indicator-title {
+            color: var(--muted);
+            font-size: 0.78rem;
+            font-weight: 800;
+        }
+
+        .indicator-value {
+            margin-top: 8px;
+            font-size: 1.16rem;
+            font-weight: 900;
+            overflow-wrap: anywhere;
+        }
+
+        .report-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .report-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .report-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(300px, 0.82fr);
+            gap: 14px;
+            align-items: start;
+        }
+
+        .overview-stats {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .list-stack {
+            display: grid;
+            gap: 8px;
+        }
+
+        .list-row {
+            display: flex;
+            gap: 10px;
+            justify-content: space-between;
+            align-items: center;
+            min-height: 42px;
+            padding: 10px;
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius);
+            background: rgba(255, 255, 255, 0.018);
+        }
+
+        .list-row span {
+            min-width: 0;
+            overflow-wrap: anywhere;
+        }
+
+        .two-column-list {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .text-green { color: var(--green); }
+        .text-red { color: var(--red); }
+        .text-amber { color: var(--amber); }
+        .text-blue { color: var(--blue); }
+        .muted { color: var(--muted); }
+        .hidden { display: none !important; }
+
+        @media (max-width: 1120px) {
+            .content-grid,
+            .report-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .indicators-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 860px) {
+            .app-shell {
+                width: min(100% - 24px, 760px);
+                padding-top: 18px;
+            }
+
+            h1 {
+                font-size: 2.65rem;
+            }
+
+            .topbar,
+            .control-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .status-panel {
+                justify-items: start;
+                min-width: 0;
+            }
+
+            .market-strip,
+            .metrics-grid,
+            .token-details,
+            .overview-stats {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 620px) {
+            .market-strip,
+            .metrics-grid,
+            .token-details,
+            .signal-score-grid,
+            .risk-grid,
+            .indicators-grid,
+            .overview-stats,
+            .two-column-list {
+                grid-template-columns: 1fr;
+            }
+
+            .search-row {
+                grid-template-columns: 1fr;
+            }
+
+            .primary-action {
+                width: 100%;
+            }
+
+            .chart {
+                height: 320px;
+            }
+
+            h1 {
+                font-size: 2.12rem;
+            }
+        }
     </style>
 </head>
-<body class="min-h-screen p-4 md:p-6">
-    <div class="max-w-6xl mx-auto">
-        <!-- Header -->
-        <div class="flex items-center justify-between mb-6">
-            <div>
-                <h1 class="text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-                    CC Invest
-                </h1>
-                <p class="text-gray-400 text-sm">多链代币行情 & 美股分析</p>
+<body>
+    <main class="app-shell">
+        <header class="topbar">
+            <div class="brand-block">
+                <p class="eyebrow">CC Invest Terminal</p>
+                <h1>多资产行情与策略仪表盘</h1>
+                <p class="subtitle">聚合加密货币与美股价格、K 线、策略信号、风控参数和美股分析报告，面向日常扫描与交易前复核。</p>
             </div>
-            <div class="flex items-center gap-2">
-                <span id="status-dot" class="w-3 h-3 rounded-full bg-gray-500"></span>
-                <span id="status-text" class="text-sm text-gray-400">Connecting...</span>
+            <div class="status-panel" aria-live="polite">
+                <div class="status-line">
+                    <span id="status-dot" class="status-dot"></span>
+                    <span id="status-text">准备连接</span>
+                </div>
+                <div class="api-origin" id="api-origin">API: -</div>
             </div>
-        </div>
+        </header>
 
-        <!-- Market Overview -->
-        <div class="grid grid-cols-3 gap-4 mb-6">
-            <div class="card p-4 flex items-center justify-between">
+        <section class="market-strip" aria-label="市场概览">
+            <article class="market-card">
                 <div>
-                    <div class="text-gray-400 text-xs uppercase">BTC</div>
-                    <div class="text-xl font-bold" id="price-btc">-</div>
+                    <div class="market-name">BTC</div>
+                    <div class="market-price" id="price-btc">-</div>
                 </div>
-                <div id="change-btc" class="text-sm font-bold text-gray-400">-</div>
-            </div>
-            <div class="card p-4 flex items-center justify-between">
+                <div id="change-btc" class="market-change">-</div>
+            </article>
+            <article class="market-card">
                 <div>
-                    <div class="text-gray-400 text-xs uppercase">ETH</div>
-                    <div class="text-xl font-bold" id="price-eth">-</div>
+                    <div class="market-name">ETH</div>
+                    <div class="market-price" id="price-eth">-</div>
                 </div>
-                <div id="change-eth" class="text-sm font-bold text-gray-400">-</div>
-            </div>
-            <div class="card p-4 flex items-center justify-between">
+                <div id="change-eth" class="market-change">-</div>
+            </article>
+            <article class="market-card">
                 <div>
-                    <div class="text-gray-400 text-xs uppercase">SOL</div>
-                    <div class="text-xl font-bold" id="price-sol">-</div>
+                    <div class="market-name">SOL</div>
+                    <div class="market-price" id="price-sol">-</div>
                 </div>
-                <div id="change-sol" class="text-sm font-bold text-gray-400">-</div>
-            </div>
-        </div>
+                <div id="change-sol" class="market-change">-</div>
+            </article>
+        </section>
 
-        <!-- Chain Buttons & Input -->
-        <div class="card p-4 mb-6">
-            <div class="flex flex-wrap gap-2 mb-4">
-                <button onclick="selectChain('solana')" class="chain-btn px-4 py-2 rounded-lg font-bold text-black chain-solana">🟣 Solana</button>
-                <button onclick="selectChain('bsc')" class="chain-btn px-4 py-2 rounded-lg font-bold text-black chain-bsc">🟡 BSC</button>
-                <button onclick="selectChain('base')" class="chain-btn px-4 py-2 rounded-lg font-bold text-white chain-base">🔵 Base</button>
-                <button onclick="selectChain('ethereum')" class="chain-btn px-4 py-2 rounded-lg font-bold text-white chain-eth">⚫ ETH</button>
-                <button onclick="selectChain('us_stock')" class="chain-btn px-4 py-2 rounded-lg font-bold text-white bg-slate-600">🇺🇸 美股</button>
-            </div>
-            <div class="flex flex-col md:flex-row gap-4">
-                <div class="flex-1">
-                    <input type="text" id="token-input" placeholder="输入代币或股票代码..." value="BTC"
-                        class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white"
-                        onkeypress="if(event.key==='Enter')loadTokenData()">
-                </div>
-                <button onclick="handleSearchAction()" class="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-bold">🔍 查询</button>
-            </div>
-            <div class="mt-3 flex flex-wrap gap-2" id="popular-tokens"></div>
-        </div>
-
-        <!-- Main Content Area -->
-        <div id="main-content">
-            <!-- Account Cards -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <div class="card p-4 text-center">
-                    <div class="text-gray-400 text-xs uppercase">账户余额</div>
-                    <div class="text-xl font-bold mt-1" id="balance">$0.00</div>
-                </div>
-                <div class="card p-4 text-center">
-                    <div class="text-gray-400 text-xs uppercase">总盈亏</div>
-                    <div class="text-xl font-bold mt-1" id="pnl">$0.00</div>
-                </div>
-                <div class="card p-4 text-center">
-                    <div class="text-gray-400 text-xs uppercase">当前价格</div>
-                    <div class="text-xl font-bold mt-1" id="current-price">-</div>
-                </div>
-                <div class="card p-4 text-center">
-                    <div class="text-gray-400 text-xs uppercase">24h 涨跌</div>
-                    <div class="text-xl font-bold mt-1" id="price-change">-</div>
-                </div>
-            </div>
-
-            <!-- Token Info -->
-            <div class="card p-6 mb-6" id="token-info-card" style="display:none;">
-                <div class="flex items-center gap-4 mb-4">
-                    <img id="token-image" src="" class="w-12 h-12 rounded-full hidden">
-                    <div>
-                        <div class="text-2xl font-bold" id="token-symbol-display">-</div>
-                        <div class="text-gray-400" id="token-name-display">-</div>
+        <section class="control-panel" aria-label="查询控制">
+            <div class="control-grid">
+                <div>
+                    <div class="chain-controls" aria-label="资产类别">
+                        <button type="button" class="chain-btn chain-solana" data-chain="solana">Solana</button>
+                        <button type="button" class="chain-btn chain-bsc" data-chain="bsc">BSC</button>
+                        <button type="button" class="chain-btn chain-base" data-chain="base">Base</button>
+                        <button type="button" class="chain-btn chain-eth" data-chain="ethereum">Ethereum</button>
+                        <button type="button" class="chain-btn chain-stock" data-chain="us_stock">美股</button>
+                    </div>
+                    <div id="stock-mode-tabs" class="mode-tabs hidden" aria-label="美股视图">
+                        <button type="button" class="mode-tab active" id="view-query">股票查询</button>
+                        <button type="button" class="mode-tab" id="view-report">分析报告</button>
                     </div>
                 </div>
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
-                    <div><div class="text-gray-400 text-xs uppercase">市值</div><div class="font-bold" id="token-market-cap">-</div></div>
-                    <div><div class="text-gray-400 text-xs uppercase">排名</div><div class="font-bold text-blue-400" id="token-rank">-</div></div>
-                    <div><div class="text-gray-400 text-xs uppercase">成交量</div><div class="font-bold" id="token-volume">-</div></div>
-                    <div><div class="text-gray-400 text-xs uppercase">24h 高</div><div class="font-bold text-green-400" id="token-high">-</div></div>
-                    <div><div class="text-gray-400 text-xs uppercase">24h 低</div><div class="font-bold text-red-400" id="token-low">-</div></div>
-                </div>
-            </div>
 
-            <!-- Trading Signal -->
-            <div class="card p-6 mb-6">
-                <h2 class="text-xl font-bold mb-4">🎯 综合交易信号</h2>
-                <div class="grid grid-cols-3 gap-4 mb-4">
-                    <div class="text-center">
-                        <div class="text-gray-400 text-xs uppercase mb-2">信号强度</div>
-                        <div class="text-3xl font-bold" id="signal-strength">-</div>
+                <div class="search-stack">
+                    <div class="search-row">
+                        <input
+                            type="text"
+                            id="token-input"
+                            class="search-input"
+                            placeholder="输入代币、合约地址或股票代码"
+                            value="BTC"
+                            autocomplete="off"
+                            spellcheck="false"
+                        >
+                        <button type="button" id="search-button" class="primary-action">查询</button>
                     </div>
-                    <div class="text-center">
-                        <div class="text-gray-400 text-xs uppercase mb-2">置信度</div>
-                        <div class="text-3xl font-bold" id="signal-confidence">-</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="text-gray-400 text-xs uppercase mb-2">建议</div>
-                        <div class="text-xl font-bold px-3 py-1 rounded-lg inline-block signal-hold" id="signal-badge">-</div>
-                    </div>
-                </div>
-                <div class="text-sm text-gray-400" id="signal-reasoning">等待数据...</div>
-                <div class="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-700">
-                    <div><div class="text-gray-500 text-xs uppercase">单笔风险</div><div class="font-bold" id="signal-risk">-</div></div>
-                    <div><div class="text-gray-500 text-xs uppercase">止损位</div><div class="font-bold text-red-300" id="signal-stop">-</div></div>
-                    <div><div class="text-gray-500 text-xs uppercase">目标位</div><div class="font-bold text-green-300" id="signal-target">-</div></div>
+                    <div class="popular-tokens" id="popular-tokens" aria-label="常用资产"></div>
                 </div>
             </div>
+        </section>
 
-            <!-- Chart -->
-            <div class="card p-6 mb-6">
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
-                    <h2 class="text-xl font-bold">📈 价格走势</h2>
-                    <div class="flex gap-2">
-                        <button onclick="setInterval('1h')" class="bg-blue-600 text-white px-3 py-1 rounded text-sm">小时</button>
-                        <button onclick="setInterval('1d')" class="bg-slate-700 text-white px-3 py-1 rounded text-sm">日线</button>
-                        <button onclick="setInterval('1w')" class="bg-slate-700 text-white px-3 py-1 rounded text-sm">周线</button>
-                    </div>
-                </div>
-                <div id="price-chart" style="height: 300px;"></div>
-                <div class="text-xs text-gray-500 mt-2" id="chart-source">数据来源: Binance / Yahoo Finance</div>
-            </div>
+        <section id="main-content" class="content-grid">
+            <div class="main-column">
+                <section class="metrics-grid" aria-label="账户与行情指标">
+                    <article class="metric-card">
+                        <div class="metric-label">账户余额</div>
+                        <div class="metric-value" id="balance">$0.00</div>
+                    </article>
+                    <article class="metric-card">
+                        <div class="metric-label">总盈亏</div>
+                        <div class="metric-value" id="pnl">$0.00</div>
+                    </article>
+                    <article class="metric-card">
+                        <div class="metric-label">当前价格</div>
+                        <div class="metric-value" id="current-price">-</div>
+                    </article>
+                    <article class="metric-card">
+                        <div class="metric-label">24h 涨跌</div>
+                        <div class="metric-value" id="price-change">-</div>
+                    </article>
+                </section>
 
-            <!-- Indicators -->
-            <div class="card p-6 mb-6">
-                <h2 class="text-xl font-bold mb-4">📊 技术指标</h2>
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-4" id="indicators-grid"></div>
-            </div>
-        </div>
-
-        <!-- US Stock Analysis Panel (Hidden by default) -->
-        <div id="us-stock-analysis" class="hidden">
-            <!-- View Tabs -->
-            <div class="flex gap-2 mb-4">
-                <button onclick="showQueryView()" class="px-4 py-2 rounded-lg font-bold bg-blue-600 text-white">📈 股票查询</button>
-                <button onclick="showAnalysisView()" class="px-4 py-2 rounded-lg font-bold bg-slate-700">📊 分析报告</button>
-            </div>
-
-            <!-- Analysis Content -->
-            <div id="analysis-content">
-                <div class="flex gap-2 mb-4">
-                    <button onclick="switchReportType('daily')" class="px-4 py-2 rounded-lg font-bold bg-slate-700 text-white" id="tab-daily">📅 每日</button>
-                    <button onclick="switchReportType('weekly')" class="px-4 py-2 rounded-lg font-bold bg-slate-700" id="tab-weekly">📆 每周</button>
-                    <button onclick="loadAnalysisReport()" class="px-4 py-2 rounded-lg font-bold bg-indigo-600">🔄 刷新</button>
-                </div>
-
-                <div id="analysis-loading" class="card p-8 text-center mb-4">
-                    <div class="spinner mx-auto mb-4"></div>
-                    <div class="text-gray-400">加载分析数据...</div>
-                </div>
-
-                <!-- Market Overview -->
-                <div class="card p-6 mb-4" id="market-overview-section">
-                    <h3 class="text-lg font-bold mb-4">📊 市场概览</h3>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                        <div class="text-center p-3 bg-slate-800 rounded-lg">
-                            <div class="text-gray-400 text-xs uppercase">市场信号</div>
-                            <div class="text-2xl font-bold text-yellow-400 mt-1" id="market-signal">-</div>
-                        </div>
-                        <div class="text-center p-3 bg-slate-800 rounded-lg">
-                            <div class="text-gray-400 text-xs uppercase">综合评分</div>
-                            <div class="text-2xl font-bold mt-1" id="breadth-pct">-</div>
-                        </div>
-                        <div class="text-center p-3 bg-slate-800 rounded-lg">
-                            <div class="text-gray-400 text-xs uppercase">股票数量</div>
-                            <div class="text-2xl font-bold mt-1" id="scan-count">-</div>
-                        </div>
-                        <div class="text-center p-3 bg-slate-800 rounded-lg">
-                            <div class="text-gray-400 text-xs uppercase">置信度</div>
-                            <div class="text-2xl font-bold mt-1" id="advance-decline">-</div>
+                <section class="data-card hidden" id="token-info-card">
+                    <div class="token-heading">
+                        <img id="token-image" src="" alt="" class="token-logo hidden">
+                        <div>
+                            <div class="token-symbol" id="token-symbol-display">-</div>
+                            <div class="token-name" id="token-name-display">-</div>
                         </div>
                     </div>
-                    <div class="p-3 bg-slate-800 rounded-lg">
-                        <span class="text-gray-400 text-sm">宏观信号: </span>
-                        <span class="font-bold text-blue-400" id="macro-signal">-</span>
+                    <div class="token-details">
+                        <div class="detail-item">
+                            <div class="detail-label">市值</div>
+                            <div class="detail-value" id="token-market-cap">-</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">排名</div>
+                            <div class="detail-value text-blue" id="token-rank">-</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">成交量</div>
+                            <div class="detail-value" id="token-volume">-</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">24h 高</div>
+                            <div class="detail-value text-green" id="token-high">-</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">24h 低</div>
+                            <div class="detail-value text-red" id="token-low">-</div>
+                        </div>
                     </div>
-                </div>
+                </section>
 
-                <!-- Top Picks -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div class="card p-6">
-                        <h3 class="text-lg font-bold mb-3 text-green-400">🚀 强势买入</h3>
-                        <div id="strong-buys"><div class="text-gray-400">加载中...</div></div>
+                <section class="data-card chart-shell">
+                    <div class="card-header">
+                        <div>
+                            <h2 class="card-title">价格走势</h2>
+                            <p class="card-note" id="chart-source">等待行情数据</p>
+                        </div>
+                        <div class="interval-tabs" aria-label="K 线周期">
+                            <button type="button" class="interval-btn" data-interval="1h">小时</button>
+                            <button type="button" class="interval-btn active" data-interval="1d">日线</button>
+                            <button type="button" class="interval-btn" data-interval="1w">周线</button>
+                        </div>
                     </div>
-                    <div class="card p-6">
-                        <h3 class="text-lg font-bold mb-3 text-blue-400">💎 买入候选</h3>
-                        <div id="buy-candidates"><div class="text-gray-400">加载中...</div></div>
+                    <div id="price-chart" class="chart">
+                        <div class="empty-state">选择资产后加载价格走势</div>
                     </div>
-                </div>
+                </section>
+            </div>
 
-                <!-- Sector Rotation -->
-                <div class="card p-6 mb-4">
-                    <h3 class="text-lg font-bold mb-3">📈 板块轮动</h3>
-                    <div id="sector-ranking"><div class="text-gray-400">加载中...</div></div>
-                </div>
-
-                <!-- Recommendations -->
-                <div class="card p-6 mb-4">
-                    <h3 class="text-lg font-bold mb-3">💰 交易建议</h3>
-                    <div id="trade-recommendations"><div class="text-gray-400">加载中...</div></div>
-                </div>
-
-                <!-- Earnings Calendar -->
-                <div class="card p-6 mb-4">
-                    <h3 class="text-lg font-bold mb-3">📅 财报日历</h3>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div><div class="text-gray-400 text-sm mb-2">本周</div><div id="earnings-this-week"><div class="text-gray-400">-</div></div></div>
-                        <div><div class="text-gray-400 text-sm mb-2">下周</div><div id="earnings-next-week"><div class="text-gray-400">-</div></div></div>
+            <aside class="side-column">
+                <section class="data-card">
+                    <div class="card-header">
+                        <h2 class="card-title">综合交易信号</h2>
+                        <p class="card-note">策略引擎</p>
                     </div>
+                    <div class="signal-score-grid">
+                        <div class="signal-score">
+                            <div class="metric-label">信号强度</div>
+                            <div class="signal-number" id="signal-strength">-</div>
+                            <div class="meter"><div class="meter-fill" id="signal-strength-bar"></div></div>
+                        </div>
+                        <div class="signal-score">
+                            <div class="metric-label">置信度</div>
+                            <div class="signal-number" id="signal-confidence">-</div>
+                            <div class="meter"><div class="meter-fill" id="signal-confidence-bar"></div></div>
+                        </div>
+                        <div class="signal-score">
+                            <div class="metric-label">建议</div>
+                            <div class="signal-badge" id="signal-badge">等待</div>
+                        </div>
+                    </div>
+                    <ul class="reason-list" id="signal-reasoning">
+                        <li>等待数据加载。</li>
+                    </ul>
+                    <div class="risk-grid">
+                        <div class="risk-item">
+                            <div class="detail-label">单笔风险</div>
+                            <div class="risk-value" id="signal-risk">-</div>
+                        </div>
+                        <div class="risk-item">
+                            <div class="detail-label">止损位</div>
+                            <div class="risk-value text-red" id="signal-stop">-</div>
+                        </div>
+                        <div class="risk-item">
+                            <div class="detail-label">目标位</div>
+                            <div class="risk-value text-green" id="signal-target">-</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="data-card">
+                    <div class="card-header">
+                        <h2 class="card-title">技术指标</h2>
+                        <p class="card-note">趋势 / 动量 / 波动</p>
+                    </div>
+                    <div class="indicators-grid" id="indicators-grid">
+                        <div class="empty-state">等待策略信号</div>
+                    </div>
+                </section>
+            </aside>
+        </section>
+
+        <section id="us-stock-analysis" class="report-view hidden">
+            <div id="analysis-content" class="report-view">
+                <section class="data-card">
+                    <div class="report-toolbar">
+                        <div>
+                            <h2 class="card-title">美股分析报告</h2>
+                            <p class="card-note" id="report-period">每日 / 每周市场扫描</p>
+                        </div>
+                        <div class="report-tabs">
+                            <button type="button" class="interval-btn active" id="tab-daily" data-report-type="daily">每日</button>
+                            <button type="button" class="interval-btn" id="tab-weekly" data-report-type="weekly">每周</button>
+                            <button type="button" class="primary-action" id="refresh-report">刷新</button>
+                        </div>
+                    </div>
+                </section>
+
+                <div id="analysis-loading" class="data-card hidden">
+                    <div class="empty-state">正在加载分析数据...</div>
                 </div>
 
-                <!-- Risk Warnings -->
-                <div class="card p-6 border-l-4 border-red-500">
-                    <h3 class="text-lg font-bold mb-3 text-red-400">⚠️ 风险警示</h3>
-                    <div id="risk-warnings"><div class="text-gray-400">-</div></div>
+                <div class="report-grid">
+                    <div class="main-column">
+                        <section class="report-card" id="market-overview-section">
+                            <div class="card-header">
+                                <h3 class="card-title">市场概览</h3>
+                                <p class="card-note" id="macro-signal-wrap">宏观信号：<span id="macro-signal">-</span></p>
+                            </div>
+                            <div class="overview-stats">
+                                <div class="detail-item">
+                                    <div class="detail-label">市场信号</div>
+                                    <div class="detail-value text-amber" id="market-signal">-</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">市场广度</div>
+                                    <div class="detail-value" id="breadth-pct">-</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">股票数量</div>
+                                    <div class="detail-value" id="scan-count">-</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">涨 / 跌数量</div>
+                                    <div class="detail-value" id="advance-decline">-</div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="report-card">
+                            <div class="card-header">
+                                <h3 class="card-title">板块轮动</h3>
+                                <p class="card-note">相对强弱排序</p>
+                            </div>
+                            <div class="list-stack" id="sector-ranking">
+                                <div class="empty-state">暂无数据</div>
+                            </div>
+                        </section>
+
+                        <section class="report-card">
+                            <div class="card-header">
+                                <h3 class="card-title">交易建议</h3>
+                                <p class="card-note">按综合评分排序</p>
+                            </div>
+                            <div class="list-stack" id="trade-recommendations">
+                                <div class="empty-state">暂无建议</div>
+                            </div>
+                        </section>
+                    </div>
+
+                    <aside class="side-column">
+                        <section class="report-card">
+                            <div class="card-header">
+                                <h3 class="card-title">强势买入</h3>
+                                <p class="card-note">高优先级</p>
+                            </div>
+                            <div class="list-stack" id="strong-buys">
+                                <div class="empty-state">暂无</div>
+                            </div>
+                        </section>
+
+                        <section class="report-card">
+                            <div class="card-header">
+                                <h3 class="card-title">买入候选</h3>
+                                <p class="card-note">观察名单</p>
+                            </div>
+                            <div class="list-stack" id="buy-candidates">
+                                <div class="empty-state">暂无</div>
+                            </div>
+                        </section>
+
+                        <section class="report-card">
+                            <div class="card-header">
+                                <h3 class="card-title">财报日历</h3>
+                                <p class="card-note">近期事件</p>
+                            </div>
+                            <div class="two-column-list">
+                                <div>
+                                    <div class="detail-label">本周</div>
+                                    <div class="list-stack" id="earnings-this-week">
+                                        <div class="muted">无</div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="detail-label">下周</div>
+                                    <div class="list-stack" id="earnings-next-week">
+                                        <div class="muted">无</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="report-card">
+                            <div class="card-header">
+                                <h3 class="card-title text-red">风险警示</h3>
+                                <p class="card-note">需要人工复核</p>
+                            </div>
+                            <div class="list-stack" id="risk-warnings">
+                                <div class="muted">暂无风险</div>
+                            </div>
+                        </section>
+                    </aside>
                 </div>
             </div>
-        </div>
-    </div>
+        </section>
+    </main>
 
     <script>
-    const API_BASE = window.location.origin + ':10000';
-    let currentChain = 'ethereum';
-    let currentSymbol = 'BTCUSDT';
-    let currentInterval = '1d';
-    let currentReportType = 'daily';
+    "use strict";
 
-    const popularTokens = {
-        solana: ['SOL', 'BONK', 'WIF', 'POPCAT'],
-        bsc: ['BNB', 'PEPE', 'SHIB', 'DOGE'],
-        base: ['BRETT', 'cbBTC', 'DEGEN'],
-        ethereum: ['BTC', 'ETH', 'ARB', 'LINK'],
-        us_stock: ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN']
+    const DEFAULT_API_BASE = "http://localhost:10000";
+    const REFRESH_INTERVAL_MS = 60000;
+    const CHAIN_LABELS = {
+        solana: "Solana",
+        bsc: "BSC",
+        base: "Base",
+        ethereum: "Ethereum",
+        us_stock: "美股"
     };
+    const DEFAULT_SYMBOLS = {
+        solana: "SOL",
+        bsc: "BNB",
+        base: "BRETT",
+        ethereum: "BTC",
+        us_stock: "AAPL"
+    };
+    const PLACEHOLDERS = {
+        solana: "输入 Solana 代币或合约地址",
+        bsc: "输入 BSC 代币或合约地址",
+        base: "输入 Base 代币或合约地址",
+        ethereum: "输入 Ethereum 代币或合约地址",
+        us_stock: "输入美股代码，例如 AAPL"
+    };
+    const popularTokens = {
+        solana: ["SOL", "BONK", "WIF", "POPCAT"],
+        bsc: ["BNB", "PEPE", "SHIB", "DOGE"],
+        base: ["BRETT", "cbBTC", "DEGEN"],
+        ethereum: ["BTC", "ETH", "ARB", "LINK"],
+        us_stock: ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN"]
+    };
+
+    const API_BASE = resolveApiBase();
+    let currentChain = "ethereum";
+    let currentSymbol = "BTCUSDT";
+    let currentInterval = "1d";
+    let currentReportType = "daily";
+    let refreshTimer = null;
+
+    function resolveApiBase() {
+        const { protocol, hostname, port, origin } = window.location;
+        if (protocol === "http:" || protocol === "https:") {
+            if (port === "10000") return origin;
+            const apiPort = protocol === "https:" ? "10000" : "10000";
+            return `${protocol}//${hostname || "localhost"}:${apiPort}`;
+        }
+        return DEFAULT_API_BASE;
+    }
+
+    function $(id) {
+        return document.getElementById(id);
+    }
+
+    function setText(id, value) {
+        const element = $(id);
+        if (element) element.textContent = value;
+    }
+
+    function setStatus(state, text) {
+        const dot = $("status-dot");
+        if (dot) dot.className = `status-dot ${state || ""}`.trim();
+        setText("status-text", text);
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? "")
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#039;");
+    }
+
+    function escapeAttribute(value) {
+        return escapeHtml(value).replaceAll("`", "&#096;");
+    }
+
+    function toNumber(value) {
+        if (typeof value === "string") {
+            const cleaned = value.replace(/[$,%\s,]/g, "");
+            if (!cleaned || cleaned.toUpperCase() === "N/A") return null;
+            const parsed = Number(cleaned);
+            return Number.isFinite(parsed) ? parsed : null;
+        }
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : null;
+    }
+
+    function isPositive(value) {
+        const numeric = toNumber(value);
+        return numeric !== null && numeric >= 0;
+    }
+
+    function isContractLike(symbol) {
+        const raw = String(symbol || "").trim();
+        return /^0x[a-fA-F0-9]{40}$/.test(raw) || (raw.length > 40 && !raw.toUpperCase().endsWith("USDT"));
+    }
+
+    function normalizeSymbolForHistory(symbol) {
+        const raw = String(symbol || "").trim().toUpperCase();
+        if (currentChain === "us_stock" || isContractLike(raw)) return raw;
+        return raw.endsWith("USDT") ? raw : `${raw.replace(/USD$/, "")}USDT`;
+    }
+
+    async function fetchJson(path, options = {}) {
+        const timeoutMs = options.timeoutMs ?? 25000;
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+            const response = await fetch(`${API_BASE}${path}`, { signal: controller.signal });
+            if (!response.ok) {
+                let message = `HTTP ${response.status}`;
+                try {
+                    const payload = await response.json();
+                    message = payload.detail || message;
+                } catch (_) {}
+                throw new Error(message);
+            }
+            return response.json();
+        } catch (error) {
+            if (error.name === "AbortError") {
+                throw new Error(`请求超时（${Math.round(timeoutMs / 1000)}秒）`);
+            }
+            throw error;
+        } finally {
+            window.clearTimeout(timeoutId);
+        }
+    }
+
+    function formatPrice(price) {
+        const value = toNumber(price);
+        if (value === null) return "-";
+        const abs = Math.abs(value);
+        const digits = abs >= 1000 ? 2 : abs >= 1 ? 2 : abs >= 0.01 ? 4 : 8;
+        return `$${value.toLocaleString(undefined, {
+            minimumFractionDigits: Math.min(2, digits),
+            maximumFractionDigits: digits
+        })}`;
+    }
+
+    function formatOptionalPrice(price) {
+        const value = toNumber(price);
+        if (value === null || value === 0) return "-";
+        return formatPrice(value);
+    }
+
+    function formatAccountMoney(value) {
+        if (typeof value === "string" && value.trim().startsWith("$")) return value.trim();
+        return formatPrice(value);
+    }
+
+    function formatPercent(value, digits = 2) {
+        const numeric = toNumber(value);
+        if (numeric === null) return "-";
+        const sign = numeric > 0 ? "+" : "";
+        return `${sign}${numeric.toFixed(digits)}%`;
+    }
+
+    function formatLargeNum(value) {
+        const numeric = toNumber(value);
+        if (numeric === null || numeric === 0) return "-";
+        const abs = Math.abs(numeric);
+        if (abs >= 1e12) return `$${(numeric / 1e12).toFixed(2)}T`;
+        if (abs >= 1e9) return `$${(numeric / 1e9).toFixed(2)}B`;
+        if (abs >= 1e6) return `$${(numeric / 1e6).toFixed(2)}M`;
+        if (abs >= 1e3) return `$${(numeric / 1e3).toFixed(1)}K`;
+        return `$${numeric.toFixed(0)}`;
+    }
+
+    function updateSignedClass(id, value, baseClass) {
+        const element = $(id);
+        if (!element) return;
+        element.className = `${baseClass} ${isPositive(value) ? "text-green" : "text-red"}`;
+    }
+
+    function setMeter(id, value) {
+        const element = $(id);
+        if (!element) return;
+        const numeric = Math.max(0, Math.min(100, toNumber(value) || 0));
+        element.style.width = `${numeric}%`;
+    }
+
+    function renderPopularTokens(chain) {
+        const container = $("popular-tokens");
+        if (!container) return;
+        const tokens = popularTokens[chain] || [];
+        container.innerHTML = tokens.map(token => (
+            `<button type="button" class="popular-token" data-token="${escapeAttribute(token)}">${escapeHtml(token)}</button>`
+        )).join("");
+
+        container.querySelectorAll("[data-token]").forEach(button => {
+            button.addEventListener("click", () => {
+                $("token-input").value = button.dataset.token || "";
+                loadTokenData();
+            });
+        });
+    }
+
+    function setActiveChainButton(chain) {
+        document.querySelectorAll("[data-chain]").forEach(button => {
+            button.classList.toggle("active", button.dataset.chain === chain);
+            button.setAttribute("aria-pressed", button.dataset.chain === chain ? "true" : "false");
+        });
+    }
 
     function selectChain(chain) {
         currentChain = chain;
-        const input = document.getElementById('token-input');
-        const placeholder = { solana: 'SOL...', bsc: 'PEPE...', base: 'BRETT...', ethereum: 'BTC...', us_stock: 'AAPL...' };
-        input.placeholder = placeholder[chain] || '输入...';
-        
-        const tokens = popularTokens[chain] || [];
-        document.getElementById('popular-tokens').innerHTML = tokens.map(t => 
-            `<button onclick="document.getElementById('token-input').value='${t}';loadTokenData();" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs">${t}</button>`
-        ).join('');
-
-        // Toggle views
-        const mainContent = document.getElementById('main-content');
-        const usStockAnalysis = document.getElementById('us-stock-analysis');
-        
-        if (chain === 'us_stock') {
-            mainContent.style.display = 'none';
-            usStockAnalysis.classList.remove('hidden');
-            document.getElementById('us-stock-analysis').style.display = 'block';
-            showQueryView();
-        } else {
-            mainContent.style.display = 'block';
-            usStockAnalysis.classList.add('hidden');
-            input.value = chain === 'ethereum' ? 'BTC' : '';
-            loadTokenData();
-        }
-    }
-
-    function handleSearchAction() {
-        if (currentChain === 'us_stock') {
-            loadTokenData();
-        } else {
-            loadTokenData();
-        }
-    }
-
-    function showQueryView() {
-        document.getElementById('main-content').style.display = 'block';
-        document.getElementById('us-stock-analysis').classList.add('hidden');
-        document.getElementById('tab-daily').className = 'px-4 py-2 rounded-lg font-bold bg-slate-700 text-white';
-        document.getElementById('tab-weekly').className = 'px-4 py-2 rounded-lg font-bold bg-slate-700';
+        const input = $("token-input");
+        input.placeholder = PLACEHOLDERS[chain] || "输入代码";
+        input.value = DEFAULT_SYMBOLS[chain] || "";
+        setActiveChainButton(chain);
+        renderPopularTokens(chain);
+        $("stock-mode-tabs").classList.toggle("hidden", chain !== "us_stock");
+        showQueryView(false);
         loadTokenData();
     }
 
+    function handleSearchAction() {
+        loadTokenData();
+    }
+
+    function showQueryView(shouldLoad = true) {
+        $("main-content").classList.remove("hidden");
+        $("us-stock-analysis").classList.add("hidden");
+        $("view-query").classList.add("active");
+        $("view-report").classList.remove("active");
+        if (shouldLoad) loadTokenData();
+    }
+
     function showAnalysisView() {
-        document.getElementById('main-content').style.display = 'none';
-        document.getElementById('us-stock-analysis').classList.remove('hidden');
+        $("main-content").classList.add("hidden");
+        $("us-stock-analysis").classList.remove("hidden");
+        $("view-query").classList.remove("active");
+        $("view-report").classList.add("active");
         loadAnalysisReport();
+    }
+
+    function setChartInterval(interval) {
+        currentInterval = interval;
+        document.querySelectorAll("[data-interval]").forEach(button => {
+            button.classList.toggle("active", button.dataset.interval === interval);
+        });
+        loadHistory();
+        loadStrategySignal();
     }
 
     function switchReportType(type) {
         currentReportType = type;
-        document.getElementById('tab-daily').className = type === 'daily' 
-            ? 'px-4 py-2 rounded-lg font-bold bg-blue-600 text-white' 
-            : 'px-4 py-2 rounded-lg font-bold bg-slate-700';
-        document.getElementById('tab-weekly').className = type === 'weekly' 
-            ? 'px-4 py-2 rounded-lg font-bold bg-blue-600 text-white' 
-            : 'px-4 py-2 rounded-lg font-bold bg-slate-700';
+        $("tab-daily").classList.toggle("active", type === "daily");
+        $("tab-weekly").classList.toggle("active", type === "weekly");
         loadAnalysisReport();
     }
 
     async function loadTokenData() {
-        const symbol = document.getElementById('token-input').value.trim().toUpperCase();
-        if (!symbol) return;
+        const input = $("token-input");
+        const rawSymbol = input.value.trim();
+        if (!rawSymbol) return;
 
-        currentSymbol = currentChain === 'us_stock' ? symbol : (symbol.endsWith('USDT') ? symbol : symbol + 'USDT');
-        
-        document.getElementById('status-text').textContent = 'Loading...';
-        
+        const symbol = rawSymbol.toUpperCase();
+        currentSymbol = normalizeSymbolForHistory(symbol);
+        setStatus("loading", `加载 ${symbol}`);
+
         try {
-            const assetClass = currentChain === 'us_stock' ? 'us_equity' : 'crypto';
-            const url = `${API_BASE}/webhooks/price/${encodeURIComponent(symbol)}?asset_class=${assetClass}`;
-            const res = await fetch(url);
-            
-            if (!res.ok) throw new Error('API error');
-            
-            const d = await res.json();
-            
-            const price = d.price || d.price_usd || 0;
-            document.getElementById('current-price').textContent = formatPrice(price);
-            document.getElementById('price-change').textContent = (d.change_24h >= 0 ? '+' : '') + (d.change_24h || 0).toFixed(2) + '%';
-            document.getElementById('price-change').className = 'text-xl font-bold mt-1 ' + (d.change_24h >= 0 ? 'text-green-400' : 'text-red-400');
-            document.getElementById('token-symbol-display').textContent = d.symbol || symbol;
-            document.getElementById('token-name-display').textContent = d.name || '-';
-            document.getElementById('token-market-cap').textContent = formatLargeNum(d.market_cap);
-            document.getElementById('token-rank').textContent = d.market_cap_rank ? '#' + d.market_cap_rank : '-';
-            document.getElementById('token-volume').textContent = formatLargeNum(d.total_volume);
-            document.getElementById('token-high').textContent = formatPrice(d.high_24h);
-            document.getElementById('token-low').textContent = formatPrice(d.low_24h);
-            document.getElementById('token-info-card').style.display = 'block';
-            
-            document.getElementById('status-dot').className = 'w-3 h-3 rounded-full bg-green-500 pulse';
-            document.getElementById('status-text').textContent = d.symbol + ' Ready';
-            
-            await loadHistory();
-            
-        } catch (e) {
-            document.getElementById('status-dot').className = 'w-3 h-3 rounded-full bg-red-500';
-            document.getElementById('status-text').textContent = 'API Offline';
+            const assetClass = currentChain === "us_stock" ? "us_equity" : "crypto";
+            const data = await fetchJson(`/webhooks/price/${encodeURIComponent(symbol)}?asset_class=${assetClass}`);
+            renderPriceData(data, symbol);
+            await Promise.allSettled([
+                loadHistory(),
+                loadStrategySignal(),
+                loadAccount()
+            ]);
+            setStatus("ready", `${data.symbol || symbol} 已更新`);
+        } catch (error) {
+            setStatus("error", `API 不可用：${error.message}`);
+            renderChart([]);
+            renderSignalError(error.message);
         }
+    }
+
+    function renderPriceData(data, fallbackSymbol) {
+        const price = toNumber(data.price ?? data.price_usd);
+        const change = toNumber(data.change_24h) ?? 0;
+
+        setText("current-price", formatPrice(price));
+        setText("price-change", formatPercent(change));
+        updateSignedClass("price-change", change, "metric-value");
+
+        setText("token-symbol-display", data.symbol || fallbackSymbol);
+        setText("token-name-display", data.name || CHAIN_LABELS[currentChain] || "-");
+        setText("token-market-cap", formatLargeNum(data.market_cap));
+        setText("token-rank", data.market_cap_rank ? `#${data.market_cap_rank}` : "-");
+        setText("token-volume", formatLargeNum(data.total_volume));
+        setText("token-high", formatOptionalPrice(data.high_24h));
+        setText("token-low", formatOptionalPrice(data.low_24h));
+
+        const image = $("token-image");
+        if (data.image) {
+            image.src = data.image;
+            image.alt = `${data.symbol || fallbackSymbol} logo`;
+            image.classList.remove("hidden");
+        } else {
+            image.removeAttribute("src");
+            image.alt = "";
+            image.classList.add("hidden");
+        }
+
+        $("token-info-card").classList.remove("hidden");
+        setText("chart-source", `数据来源：${data.source || "行情接口"}`);
     }
 
     async function loadHistory() {
+        if (isContractLike(currentSymbol)) {
+            renderChart([]);
+            setText("chart-source", "合约地址暂不加载 K 线历史");
+            return;
+        }
+
         try {
-            const assetClass = currentChain === 'us_stock' ? 'us_equity' : 'crypto';
-            const url = `${API_BASE}/webhooks/history/${encodeURIComponent(currentSymbol)}?interval=${currentInterval}&limit=90&asset_class=${assetClass}`;
-            const res = await fetch(url);
-            
-            if (res.ok) {
-                const result = await res.json();
-                renderChart(result);
-            }
-        } catch (e) {
-            console.error('History error:', e);
+            const assetClass = currentChain === "us_stock" ? "us_equity" : "crypto";
+            const result = await fetchJson(`/webhooks/history/${encodeURIComponent(currentSymbol)}?interval=${currentInterval}&limit=180&asset_class=${assetClass}`);
+            renderChart(result.data || []);
+            setText("chart-source", `数据来源：${result.source || "行情接口"}，${result.count || 0} 根 K 线`);
+        } catch (error) {
+            renderChart([]);
+            setText("chart-source", `历史数据不可用：${error.message}`);
         }
     }
 
-    function renderChart(data) {
-        const rows = data.data || [];
-        if (!rows.length) return;
-        
-        const times = rows.map(r => r.time || r.timestamp);
-        const closes = rows.map(r => Number(r.close));
-        const volumes = rows.map(r => Number(r.volume || 0));
-        
-        Plotly.newPlot('price-chart', [
-            { x: times, y: closes, type: 'scatter', mode: 'lines', line: { color: '#3b82f6', width: 2 } },
-            { x: times, y: volumes, type: 'bar', yaxis: 'y2', marker: { color: 'rgba(59,130,246,0.3)' } }
-        ], {
-            paper_bgcolor: 'transparent',
-            plot_bgcolor: 'transparent',
-            font: { color: '#94a3b8' },
-            margin: { t: 10, r: 10, b: 30, l: 50 },
-            xaxis: { gridcolor: '#1e293b' },
-            yaxis: { gridcolor: '#1e293b', tickprefix: '$' },
-            yaxis2: { domain: [0, 0.2], showgrid: false }
-        }, { responsive: true, displayModeBar: false });
+    function renderChart(rows) {
+        const container = $("price-chart");
+        const dataRows = Array.isArray(rows) ? rows.filter(row => toNumber(row.close) !== null) : [];
+
+        if (!dataRows.length) {
+            if (window.Plotly) Plotly.purge(container);
+            container.innerHTML = '<div class="empty-state">暂无可用价格走势</div>';
+            return;
+        }
+
+        const times = dataRows.map(row => row.time || row.timestamp);
+        const closes = dataRows.map(row => toNumber(row.close));
+        const volumes = dataRows.map(row => toNumber(row.volume) || 0);
+
+        if (!window.Plotly) {
+            renderFallbackChart(container, times, closes);
+            return;
+        }
+
+        if (container.classList.contains("js-plotly-plot")) {
+            Plotly.purge(container);
+        }
+        container.innerHTML = "";
+        const trace = {
+            x: times,
+            y: closes,
+            type: "scatter",
+            mode: "lines",
+            line: { color: "#35d07f", width: 2.4 },
+            hovertemplate: "%{x}<br>$%{y:,.4f}<extra></extra>",
+            name: "Close"
+        };
+
+        const volumeTrace = {
+            x: times,
+            y: volumes,
+            type: "bar",
+            marker: { color: "rgba(100, 168, 255, 0.18)" },
+            yaxis: "y2",
+            hoverinfo: "skip",
+            name: "Volume"
+        };
+
+        Plotly.newPlot(container, [volumeTrace, trace], {
+            paper_bgcolor: "rgba(0,0,0,0)",
+            plot_bgcolor: "rgba(0,0,0,0)",
+            font: { color: "#9baaa6", family: "Inter, system-ui, sans-serif" },
+            margin: { t: 8, r: 12, b: 36, l: 56 },
+            showlegend: false,
+            xaxis: {
+                gridcolor: "#223035",
+                zerolinecolor: "#223035",
+                rangeslider: { visible: false }
+            },
+            yaxis: {
+                gridcolor: "#223035",
+                zerolinecolor: "#223035",
+                tickprefix: "$",
+                fixedrange: false
+            },
+            yaxis2: {
+                overlaying: "y",
+                side: "right",
+                visible: false,
+                rangemode: "tozero"
+            },
+            hovermode: "x unified"
+        }, {
+            responsive: true,
+            displayModeBar: false
+        });
+    }
+
+    function renderFallbackChart(container, times, closes) {
+        const min = Math.min(...closes);
+        const max = Math.max(...closes);
+        const spread = max - min || 1;
+        const points = closes.map((close, index) => {
+            const x = (index / Math.max(1, closes.length - 1)) * 100;
+            const y = 92 - ((close - min) / spread) * 82;
+            return `${x.toFixed(2)},${y.toFixed(2)}`;
+        }).join(" ");
+        const first = escapeHtml(times[0] || "");
+        const last = escapeHtml(times[times.length - 1] || "");
+        container.innerHTML = `
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="价格走势">
+                <polyline fill="none" stroke="#35d07f" stroke-width="1.8" points="${points}"></polyline>
+            </svg>
+            <div class="card-note">${first} - ${last}</div>
+        `;
+    }
+
+    async function loadStrategySignal() {
+        if (isContractLike(currentSymbol)) {
+            renderSignalError("合约地址暂不支持策略信号。");
+            return;
+        }
+
+        try {
+            const assetClass = currentChain === "us_stock" ? "us_equity" : "crypto";
+            const data = await fetchJson(`/webhooks/strategy_signal/${encodeURIComponent(currentSymbol)}?asset_class=${assetClass}&interval=${currentInterval}&limit=260`);
+            renderStrategySignal(data);
+        } catch (error) {
+            renderSignalError(error.message);
+        }
+    }
+
+    function renderStrategySignal(signal) {
+        const strength = toNumber(signal.strength) ?? 0;
+        const confidence = toNumber(signal.confidence) ?? 0;
+        setText("signal-strength", `${Math.round(strength)}%`);
+        setText("signal-confidence", `${Math.round(confidence)}%`);
+        setMeter("signal-strength-bar", strength);
+        setMeter("signal-confidence-bar", confidence);
+
+        const badge = $("signal-badge");
+        badge.textContent = signal.label || signal.action || "等待";
+        badge.className = `signal-badge ${signal.class_name || classNameForAction(signal.action)}`;
+
+        const reasons = Array.isArray(signal.reasons) && signal.reasons.length
+            ? signal.reasons
+            : ["暂无策略说明。"];
+        $("signal-reasoning").innerHTML = reasons
+            .map(reason => `<li>${escapeHtml(reason)}</li>`)
+            .join("");
+
+        setText("signal-risk", signal.position_risk_pct ? `${(signal.position_risk_pct * 100).toFixed(2)}%` : "-");
+        setText("signal-stop", formatPrice(signal.stop_loss));
+        setText("signal-target", formatPrice(signal.take_profit));
+        renderIndicators(signal.indicators || {});
+    }
+
+    function renderSignalError(message) {
+        setText("signal-strength", "-");
+        setText("signal-confidence", "-");
+        setMeter("signal-strength-bar", 0);
+        setMeter("signal-confidence-bar", 0);
+        const badge = $("signal-badge");
+        badge.textContent = "等待";
+        badge.className = "signal-badge";
+        $("signal-reasoning").innerHTML = `<li>${escapeHtml(message || "等待策略信号。")}</li>`;
+        setText("signal-risk", "-");
+        setText("signal-stop", "-");
+        setText("signal-target", "-");
+        $("indicators-grid").innerHTML = '<div class="empty-state">暂无技术指标</div>';
+    }
+
+    function classNameForAction(action) {
+        const value = String(action || "").toUpperCase();
+        if (value.includes("LONG") || value.includes("BUY")) return "signal-buy";
+        if (value.includes("SELL") || value.includes("RISK_OFF")) return "signal-sell";
+        return "";
+    }
+
+    function renderIndicators(indicators) {
+        const rows = [
+            ["收盘价", indicators.close, value => formatPrice(value), "neutral"],
+            ["SMA 20", indicators.sma20, value => formatPrice(value), compareIndicator(indicators.close, indicators.sma20)],
+            ["SMA 50", indicators.sma50, value => formatPrice(value), compareIndicator(indicators.close, indicators.sma50)],
+            ["RSI", indicators.rsi, value => `${Number(value).toFixed(1)}`, rsiState(indicators.rsi)],
+            ["MACD Hist", indicators.macd_hist, value => Number(value).toFixed(4), compareIndicator(indicators.macd_hist, 0)],
+            ["ADX", indicators.adx, value => Number(value).toFixed(1), (toNumber(indicators.adx) || 0) >= 22 ? "positive" : "neutral"],
+            ["ATR%", indicators.atr_pct, value => `${Number(value).toFixed(2)}%`, (toNumber(indicators.atr_pct) || 0) > 8 ? "negative" : "neutral"],
+            ["量能比", indicators.volume_ratio, value => `${Number(value).toFixed(2)}x`, (toNumber(indicators.volume_ratio) || 0) >= 1.1 ? "positive" : "neutral"]
+        ];
+
+        const available = rows.filter(([, value]) => toNumber(value) !== null);
+        const container = $("indicators-grid");
+        if (!available.length) {
+            container.innerHTML = '<div class="empty-state">暂无技术指标</div>';
+            return;
+        }
+
+        container.innerHTML = available.map(([label, value, formatter, state]) => `
+            <div class="indicator-card ${state}">
+                <div class="indicator-title">${escapeHtml(label)}</div>
+                <div class="indicator-value">${escapeHtml(formatter(value))}</div>
+            </div>
+        `).join("");
+    }
+
+    function compareIndicator(left, right) {
+        const a = toNumber(left);
+        const b = toNumber(right);
+        if (a === null || b === null) return "neutral";
+        return a >= b ? "positive" : "negative";
+    }
+
+    function rsiState(value) {
+        const rsi = toNumber(value);
+        if (rsi === null) return "neutral";
+        if (rsi > 70) return "negative";
+        if (rsi >= 45 && rsi <= 68) return "positive";
+        return "neutral";
+    }
+
+    async function loadMarketOverview() {
+        const tokens = ["BTC", "ETH", "SOL"];
+        await Promise.allSettled(tokens.map(async token => {
+            const data = await fetchJson(`/webhooks/price/${token}?asset_class=crypto`);
+            const price = toNumber(data.price ?? data.price_usd);
+            const change = toNumber(data.change_24h) ?? 0;
+            const lower = token.toLowerCase();
+            setText(`price-${lower}`, formatPrice(price));
+            setText(`change-${lower}`, formatPercent(change, 1));
+            updateSignedClass(`change-${lower}`, change, "market-change");
+        }));
+    }
+
+    async function loadAccount() {
+        try {
+            const data = await fetchJson("/webhooks/account");
+            const account = data.account || {};
+            const balance = account.balance ?? account.cash_balance ?? account.equity ?? account.initial_balance;
+            const pnl = account.total_pnl ?? account.pnl ?? account.realized_pnl ?? account.unrealized_pnl;
+            setText("balance", formatAccountMoney(balance ?? 0));
+            setText("pnl", formatAccountMoney(pnl ?? 0));
+            updateSignedClass("pnl", pnl ?? 0, "metric-value");
+        } catch (_) {
+            setText("balance", "$0.00");
+            setText("pnl", "$0.00");
+        }
     }
 
     async function loadAnalysisReport() {
-        document.getElementById('analysis-loading').style.display = 'block';
-        
+        $("analysis-loading").classList.remove("hidden");
         try {
-            const endpoint = currentReportType === 'weekly' ? 'weekly_report' : 'daily_report';
-            const res = await fetch(`${API_BASE}/webhooks/${endpoint}?compact=true`);
-            
-            if (res.ok) {
-                const data = await res.json();
-                renderAnalysis(data);
-            }
-        } catch (e) {
-            console.error('Analysis error:', e);
+            const endpoint = currentReportType === "weekly" ? "weekly_report" : "daily_report";
+            const raw = await fetchJson(`/webhooks/${endpoint}?compact=true`, { timeoutMs: 30000 });
+            const data = raw.data || raw;
+            renderAnalysis(data);
+        } catch (error) {
+            renderAnalysisError(error.message);
         } finally {
-            document.getElementById('analysis-loading').style.display = 'none';
+            $("analysis-loading").classList.add("hidden");
         }
     }
 
     function renderAnalysis(data) {
-        const mo = data.market_overview || {};
-        
-        document.getElementById('market-signal').textContent = mo.market_signal || '-';
-        document.getElementById('market-signal').className = 'text-2xl font-bold mt-1 ' + 
-            ((mo.market_signal || '').includes('BULL') ? 'text-green-400' : 
-             (mo.market_signal || '').includes('BEAR') ? 'text-red-400' : 'text-yellow-400');
-        
-        document.getElementById('breadth-pct').textContent = (mo.breadth_pct || 0).toFixed(1) + '%';
-        document.getElementById('scan-count').textContent = data.stats?.scanned || '0';
-        document.getElementById('advance-decline').textContent = (data.stats?.up_count || 0) + '/' + (data.stats?.down_count || 0);
-        document.getElementById('macro-signal').textContent = data.macro_signal || '-';
-        
-        const strongBuys = data.strong_buys || [];
-        document.getElementById('strong-buys').innerHTML = strongBuys.length 
-            ? strongBuys.map(s => `<div class="p-2 bg-slate-800 rounded mb-2">${typeof s === 'string' ? s : s.symbol || s}</div>`).join('')
-            : '<div class="text-gray-400">暂无</div>';
-        
-        const candidates = data.buy_candidates || [];
-        document.getElementById('buy-candidates').innerHTML = candidates.length 
-            ? candidates.map(c => `<div class="p-2 bg-slate-800 rounded mb-2">${typeof c === 'string' ? c : c.symbol || c}</div>`).join('')
-            : '<div class="text-gray-400">暂无</div>';
-        
-        const sectors = data.sector_ranking || [];
-        document.getElementById('sector-ranking').innerHTML = sectors.length 
-            ? sectors.map((s, i) => `<div class="flex justify-between p-2 bg-slate-800 rounded mb-1"><span>${i+1}. ${s.sector || s.name || '-'}</span><span class="${(s.flow || '').includes('IN') ? 'text-green-400' : 'text-red-400'}">${s.flow || s.signal || '-'}</span></div>`).join('')
-            : '<div class="text-gray-400">暂无数据</div>';
-        
-        const recs = data.recommendations || [];
-        document.getElementById('trade-recommendations').innerHTML = recs.length 
-            ? recs.map(r => `<div class="p-3 bg-slate-800 rounded mb-2"><div class="font-bold">${r.symbol || '-'}</div><div class="${(r.action || '').includes('BUY') ? 'text-green-400' : 'text-yellow-400'}">${r.action || '-'}</div></div>`).join('')
-            : '<div class="text-gray-400">暂无建议</div>';
-        
+        const normalized = normalizeReport(data || {});
+        setText("report-period", normalized.periodLabel || (currentReportType === "weekly" ? "每周市场扫描" : "每日市场扫描"));
+        setText("market-signal", normalized.marketOverview.market_signal || "-");
+        $("market-signal").className = `detail-value ${classForSignal(normalized.marketOverview.market_signal)}`;
+        setText("breadth-pct", formatNullablePercent(normalized.marketOverview.breadth_pct ?? normalized.breadthPct));
+        setText("scan-count", normalized.stats.scanned ?? normalized.stats.scan_count ?? "-");
+        setText("advance-decline", formatAdvanceDecline(normalized.stats));
+        setText("macro-signal", normalized.macroSignal || "-");
+
+        renderList("strong-buys", normalized.strongBuys, item => listItemLabel(item), "暂无");
+        renderList("buy-candidates", normalized.buyCandidates, item => listItemLabel(item), "暂无");
+        renderSectorList(normalized.sectors);
+        renderRecommendationList(normalized.recommendations);
+        renderList("earnings-this-week", normalized.earnings.this_week || normalized.thisWeekEarnings, item => listItemLabel(item), "无");
+        renderList("earnings-next-week", normalized.earnings.next_week || normalized.nextWeekEarnings, item => listItemLabel(item), "无");
+        renderList("risk-warnings", normalized.risks, item => typeof item === "string" ? item : (item.message || item.title || JSON.stringify(item)), "暂无风险");
+    }
+
+    function normalizeReport(data) {
+        const marketOverview = data.market_overview || {
+            market_signal: data.market_signal,
+            breadth_pct: data.breadth_pct
+        };
+        const sectorRotation = data.sector_rotation || {};
         const earnings = data.earnings_calendar || {};
-        document.getElementById('earnings-this-week').innerHTML = (earnings.this_week || []).length 
-            ? earnings.this_week.map(e => `<div class="text-sm">${e.symbol || e}</div>`).join('')
-            : '<div class="text-gray-400">无</div>';
-        document.getElementById('earnings-next-week').innerHTML = (earnings.next_week || []).length 
-            ? earnings.next_week.map(e => `<div class="text-sm">${e.symbol || e}</div>`).join('')
-            : '<div class="text-gray-400">无</div>';
-        
-        const risks = data.risk_warnings || [];
-        document.getElementById('risk-warnings').innerHTML = risks.length 
-            ? risks.map(r => `<div class="text-sm">⚡ ${typeof r === 'string' ? r : r.message || r}</div>`).join('')
-            : '<div class="text-green-400">✅ 暂无风险</div>';
+        return {
+            periodLabel: data.period_label || data.period || data.generated_at,
+            marketOverview,
+            breadthPct: data.breadth_pct,
+            macroSignal: data.macro_signal || sectorRotation.macro_signal,
+            stats: data.stats || {},
+            strongBuys: data.strong_buys || [],
+            buyCandidates: data.buy_candidates || data.candidates || [],
+            sectors: data.sector_ranking || sectorRotation.top_performers || data.leading_sectors || [],
+            recommendations: data.recommendations || (data.top_recommendation ? [data.top_recommendation] : []),
+            earnings,
+            thisWeekEarnings: data.this_week_earnings || [],
+            nextWeekEarnings: data.next_week_earnings || [],
+            risks: data.risk_warnings || data.risks || []
+        };
     }
 
-    function setInterval(interval) {
-        currentInterval = interval;
-        document.querySelectorAll('[onclick^="setInterval"]').forEach(btn => {
-            btn.className = btn.textContent.includes('小时') ? 'bg-slate-700 text-white px-3 py-1 rounded text-sm' : btn.className;
-        });
-        event.target.className = 'bg-blue-600 text-white px-3 py-1 rounded text-sm';
-        loadHistory();
+    function classForSignal(signal) {
+        const text = String(signal || "").toUpperCase();
+        if (text.includes("BULL") || text.includes("BUY")) return "text-green";
+        if (text.includes("BEAR") || text.includes("SELL") || text.includes("RISK_OFF")) return "text-red";
+        return "text-amber";
     }
 
-    function formatPrice(price) {
-        if (!price) return '-';
-        return '$' + (price >= 1000 ? price.toLocaleString() : price.toFixed(2));
+    function formatNullablePercent(value) {
+        const numeric = toNumber(value);
+        return numeric === null ? "-" : `${numeric.toFixed(1)}%`;
     }
 
-    function formatLargeNum(num) {
-        if (!num) return '-';
-        if (num >= 1e12) return '$' + (num/1e12).toFixed(2) + 'T';
-        if (num >= 1e9) return '$' + (num/1e9).toFixed(2) + 'B';
-        if (num >= 1e6) return '$' + (num/1e6).toFixed(2) + 'M';
-        return '$' + num.toFixed(0);
+    function formatAdvanceDecline(stats) {
+        const up = stats.up_count ?? stats.advancers ?? stats.up;
+        const down = stats.down_count ?? stats.decliners ?? stats.down;
+        if (up === undefined && down === undefined) return "-";
+        return `${up ?? 0} / ${down ?? 0}`;
     }
 
-    async function loadMarketOverview() {
-        for (const token of ['BTC', 'ETH', 'SOL']) {
-            try {
-                const url = `${API_BASE}/webhooks/price/${token}`;
-                const res = await fetch(url);
-                if (res.ok) {
-                    const d = await res.json();
-                    const price = d.price || d.price_usd || 0;
-                    const change = d.change_24h || 0;
-                    document.getElementById('price-' + token.toLowerCase()).textContent = formatPrice(price);
-                    document.getElementById('change-' + token.toLowerCase()).textContent = (change >= 0 ? '+' : '') + change.toFixed(1) + '%';
-                    document.getElementById('change-' + token.toLowerCase()).className = 'text-sm font-bold ' + (change >= 0 ? 'text-green-400' : 'text-red-400');
-                }
-            } catch (e) {}
+    function listItemLabel(item) {
+        if (typeof item === "string") return item;
+        if (!item || typeof item !== "object") return String(item ?? "-");
+        const symbol = item.symbol || item.ticker || item.name || "-";
+        const score = item.score ?? item.composite_score ?? item.confidence;
+        return score !== undefined ? `${symbol} · ${score}` : symbol;
+    }
+
+    function renderList(id, items, labeler, emptyText) {
+        const list = Array.isArray(items) ? items : [];
+        const container = $(id);
+        if (!list.length) {
+            container.innerHTML = `<div class="muted">${escapeHtml(emptyText)}</div>`;
+            return;
         }
+        container.innerHTML = list.map(item => `
+            <div class="list-row"><span>${escapeHtml(labeler(item))}</span></div>
+        `).join("");
     }
 
-    window.addEventListener('load', async () => {
-        selectChain('ethereum');
-        await loadMarketOverview();
-        await loadTokenData();
-        setInterval('1d');
-    });
+    function renderSectorList(sectors) {
+        const list = Array.isArray(sectors) ? sectors : [];
+        const container = $("sector-ranking");
+        if (!list.length) {
+            container.innerHTML = '<div class="muted">暂无数据</div>';
+            return;
+        }
+        container.innerHTML = list.map((sector, index) => {
+            const name = typeof sector === "string" ? sector : (sector.sector || sector.name || sector.symbol || "-");
+            const flow = typeof sector === "string" ? "" : (sector.flow || sector.signal || sector.momentum_signal || sector.change_pct || "");
+            const className = String(flow).includes("-") || String(flow).toUpperCase().includes("OUT") ? "text-red" : "text-green";
+            return `
+                <div class="list-row">
+                    <span>${index + 1}. ${escapeHtml(name)}</span>
+                    <span class="${className}">${escapeHtml(flow || "-")}</span>
+                </div>
+            `;
+        }).join("");
+    }
 
-    setInterval(() => { if (currentChain !== 'us_stock') { loadMarketOverview(); loadTokenData(); } }, 60000);
+    function renderRecommendationList(recommendations) {
+        const list = Array.isArray(recommendations) ? recommendations : [];
+        const container = $("trade-recommendations");
+        if (!list.length) {
+            container.innerHTML = '<div class="muted">暂无建议</div>';
+            return;
+        }
+        container.innerHTML = list.map(item => {
+            const symbol = item.symbol || item.ticker || "-";
+            const action = item.action || item.signal || item.recommendation || "-";
+            const plan = [
+                item.entry_price ? `入场 ${formatPrice(item.entry_price)}` : "",
+                item.stop_loss ? `止损 ${formatPrice(item.stop_loss)}` : "",
+                (item.take_profit_1 || item.take_profit) ? `目标 ${formatPrice(item.take_profit_1 || item.take_profit)}` : ""
+            ].filter(Boolean).join(" · ");
+            return `
+                <div class="list-row">
+                    <span><strong>${escapeHtml(symbol)}</strong><br><span class="muted">${escapeHtml(plan || "等待计划")}</span></span>
+                    <span class="${classForSignal(action)}">${escapeHtml(action)}</span>
+                </div>
+            `;
+        }).join("");
+    }
+
+    function renderAnalysisError(message) {
+        ["strong-buys", "buy-candidates", "sector-ranking", "trade-recommendations", "earnings-this-week", "earnings-next-week", "risk-warnings"].forEach(id => {
+            $(id).innerHTML = `<div class="muted">${escapeHtml(message || "分析数据不可用")}</div>`;
+        });
+        setText("market-signal", "-");
+        setText("breadth-pct", "-");
+        setText("scan-count", "-");
+        setText("advance-decline", "-");
+        setText("macro-signal", "-");
+    }
+
+    function bindEvents() {
+        document.querySelectorAll("[data-chain]").forEach(button => {
+            button.addEventListener("click", () => selectChain(button.dataset.chain));
+        });
+        document.querySelectorAll("[data-interval]").forEach(button => {
+            button.addEventListener("click", () => setChartInterval(button.dataset.interval));
+        });
+        document.querySelectorAll("[data-report-type]").forEach(button => {
+            button.addEventListener("click", () => switchReportType(button.dataset.reportType));
+        });
+        $("search-button").addEventListener("click", handleSearchAction);
+        $("token-input").addEventListener("keydown", event => {
+            if (event.key === "Enter") handleSearchAction();
+        });
+        $("view-query").addEventListener("click", () => showQueryView(true));
+        $("view-report").addEventListener("click", showAnalysisView);
+        $("refresh-report").addEventListener("click", loadAnalysisReport);
+    }
+
+    function startRefreshTimer() {
+        if (refreshTimer) window.clearInterval(refreshTimer);
+        refreshTimer = window.setInterval(() => {
+            loadMarketOverview();
+            if (!$("main-content").classList.contains("hidden")) {
+                loadTokenData();
+            }
+        }, REFRESH_INTERVAL_MS);
+    }
+
+    window.addEventListener("load", () => {
+        setText("api-origin", `API: ${API_BASE}`);
+        bindEvents();
+        setActiveChainButton(currentChain);
+        renderPopularTokens(currentChain);
+        loadMarketOverview();
+        loadTokenData();
+        startRefreshTimer();
+    });
     </script>
 </body>
 </html>
