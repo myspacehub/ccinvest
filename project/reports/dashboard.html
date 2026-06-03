@@ -838,6 +838,13 @@
                 const response = await res.json();
                 // API 返回 {status, symbol, data, timestamp}，需要提取 data 字段
                 const data = response.data || response;
+                
+                // 检查是否是演示数据
+                if (data.signal && data.signal.includes('(demo)')) {
+                    document.getElementById('report-period').textContent = `${symbol} - 本地演示模式`;
+                    document.getElementById('macro-signal').textContent = '⚠️ 无网络';
+                }
+                
                 renderStockAnalysis(symbol, data);
                 
             } catch (e) {
@@ -851,7 +858,9 @@
 
         function renderStockAnalysis(symbol, data) {
             // 更新报告标题
-            document.getElementById('report-period').textContent = `${symbol} 股票分析`;
+            const titleEl = document.getElementById('report-period');
+            const isDemo = data.signal && data.signal.includes('(demo)');
+            titleEl.textContent = isDemo ? `${symbol} - 本地演示模式（需部署到云端获取实时数据）` : `${symbol} 股票分析`;
             
             // 提取数据
             const signal = data.signal || 'NEUTRAL';
