@@ -433,6 +433,41 @@
             gap: 10px;
         }
 
+        .source-panel {
+            display: grid;
+            gap: 10px;
+            margin-top: 12px;
+            padding: 12px;
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius);
+            background: rgba(255, 255, 255, 0.018);
+        }
+
+        .source-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .source-chip {
+            display: inline-flex;
+            align-items: center;
+            min-height: 28px;
+            padding: 0 9px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--muted);
+            background: #0f1517;
+            font-size: 0.78rem;
+            font-weight: 800;
+        }
+
+        .source-chip.active {
+            border-color: rgba(53, 208, 127, 0.72);
+            color: #dfffee;
+            background: var(--green-soft);
+        }
+
         .detail-item {
             min-height: 76px;
             padding: 12px;
@@ -860,6 +895,13 @@
                             <div class="detail-value text-red" id="token-low">-</div>
                         </div>
                     </div>
+                    <div class="source-panel">
+                        <div>
+                            <div class="detail-label">公开数据源</div>
+                            <div class="card-note" id="market-source-summary">等待报价来源确认</div>
+                        </div>
+                        <div class="source-list" id="market-source-list"></div>
+                    </div>
                 </section>
 
                 <section class="data-card chart-shell">
@@ -1091,6 +1133,25 @@
         ethereum: ["BTC", "ETH", "ARB", "LINK"],
         us_stock: ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN"]
     };
+    const PUBLIC_SOURCE_POOLS = {
+        cryptoPrice: ["CoinGecko", "Coinbase", "CryptoCompare", "CoinLore", "DexScreener"],
+        cryptoHistory: ["Binance", "Yahoo Finance"],
+        stockPrice: ["Yahoo Finance"],
+        stockHistory: ["Yahoo Finance"],
+        contractPrice: ["DexScreener"]
+    };
+    const SOURCE_LABELS = {
+        binance: "Binance",
+        coingecko: "CoinGecko",
+        coinbase: "Coinbase",
+        coinlore: "CoinLore",
+        cryptocompare: "CryptoCompare",
+        dexscreener: "DexScreener",
+        yahoo: "Yahoo Finance",
+        yahoo_finance: "Yahoo Finance",
+        yahoo_equity: "Yahoo Finance",
+        yahoo_equity_history: "Yahoo Finance"
+    };
 
     const API_BASE = resolveApiBase();
     let currentChain = "ethereum";
@@ -1210,6 +1271,68 @@
     function formatAccountMoney(value) {
         if (typeof value === "string" && value.trim().startsWith("$")) return value.trim();
         return formatPrice(value);
+    }
+
+    function uniqueValues(values) {
+        return [...new Set(values.filter(Boolean))];
+    }
+
+    function normalizeSourceName(source) {
+        const raw = String(source || "").trim();
+        if (!raw || raw === "unknown" || raw === "failed" || raw === "multi_source_cross_validation") return "";
+        const key = raw.toLowerCase();
+        if (key.startsWith("dexscreener_")) {
+            const chain = raw.slice("dexscreener_".length).replaceAll("_", " ");
+            return chain ? `DexScreener (${chain})` : "DexScreener";
+        }
+        return SOURCE_LABELS[key] || raw
+            .split(/[_-]/)
+            .filter(Boolean)
+            .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(" ");
+    }
+
+    function sourcePoolFor(kind, payload = {}) {
+        const source = String(payload.source || "").toLowerCase();
+        if (kind === "price" && (payload.is_contract || source.startsWith("dexscreener"))) {
+            return PUBLIC_SOURCE_POOLS.contractPrice;
+        }
+        if (kind === "price") {
+            return currentChain === "us_stock" ? PUBLIC_SOURCE_POOLS.stockPrice : PUBLIC_SOURCE_POOLS.cryptoPrice;
+        }
+        if (kind === "history") {
+            return currentChain === "us_stock" ? PUBLIC_SOURCE_POOLS.stockHistory : PUBLIC_SOURCE_POOLS.cryptoHistory;
+        }
+        return [];
+    }
+
+    function sourcesFromPayload(payload = {}) {
+        const nestedSources = Array.isArray(payload.sources)
+            ? payload.sources.map(item => normalizeSourceName(item && item.source))
+            : [];
+        const primary = normalizeSourceName(payload.source);
+        return uniqueValues([...nestedSources, primary]);
+    }
+
+    function formatSourceSummary(kind, payload = {}, options = {}) {
+        const pool = sourcePoolFor(kind, payload);
+        const active = sourcesFromPayload(payload);
+        const activeText = active.length ? active.join(" / ") : "待确认";
+        const poolText = pool.join(" / ");
+        const label = kind === "history" ? "K线来源" : "报价来源";
+        const countText = options.count ? `；${options.count} 根 K线` : "";
+        return `${label}：本次命中 ${activeText}；公开来源池 ${poolText}${countText}`;
+    }
+
+    function renderSourceList(containerId, pool, activeSources) {
+        const container = $(containerId);
+        if (!container) return;
+        const active = uniqueValues(activeSources);
+        const names = uniqueValues([...active, ...pool]);
+        container.innerHTML = names.map(name => {
+            const activeClass = active.includes(name) ? " active" : "";
+            return `<span class="source-chip${activeClass}">${escapeHtml(name)}</span>`;
+        }).join("");
     }
 
     function formatPercent(value, digits = 2) {
@@ -1368,13 +1491,17 @@
         }
 
         $("token-info-card").classList.remove("hidden");
-        setText("chart-source", `数据来源：${data.source || "行情接口"}`);
+        const pricePool = sourcePoolFor("price", data);
+        const activePriceSources = sourcesFromPayload(data);
+        setText("market-source-summary", formatSourceSummary("price", data));
+        renderSourceList("market-source-list", pricePool, activePriceSources);
+        setText("chart-source", "正在加载 K 线来源...");
     }
 
     async function loadHistory() {
         if (isContractLike(currentSymbol)) {
             renderChart([]);
-            setText("chart-source", "合约地址暂不加载 K 线历史");
+            setText("chart-source", "K线来源：合约地址暂不加载历史数据；报价来源使用 DexScreener");
             return;
         }
 
@@ -1382,7 +1509,7 @@
             const assetClass = currentChain === "us_stock" ? "us_equity" : "crypto";
             const result = await fetchJson(`/webhooks/history/${encodeURIComponent(currentSymbol)}?interval=${currentInterval}&limit=180&asset_class=${assetClass}`);
             renderChart(result.data || []);
-            setText("chart-source", `数据来源：${result.source || "行情接口"}，${result.count || 0} 根 K 线`);
+            setText("chart-source", formatSourceSummary("history", result, { count: result.count || 0 }));
         } catch (error) {
             renderChart([]);
             setText("chart-source", `历史数据不可用：${error.message}`);
