@@ -801,21 +801,30 @@
             const cryptoPanel = document.getElementById('crypto-panel');
             if (cryptoPanel) cryptoPanel.style.display = 'none';
             
-            // 获取当前输入的股票代码
-            const symbol = document.getElementById('token-input').value.trim().toUpperCase();
+            // 获取当前输入的股票代码，如果没有则默认使用 AAPL
+            let symbol = document.getElementById('token-input').value.trim().toUpperCase();
+            if (!symbol || !isUsStockSymbol(symbol)) {
+                symbol = 'AAPL';  // 默认分析 AAPL
+                document.getElementById('token-input').value = symbol;
+            }
             
-            // 显示股票分析而不是全局报告
+            // 显示股票分析
             loadStockAnalysis(symbol);
         }
 
         async function loadStockAnalysis(symbol) {
             if (!symbol) {
-                alert('请先输入股票代码');
-                return;
+                symbol = 'AAPL';
             }
             
             const loadingEl = document.getElementById('analysis-loading');
             if (loadingEl) loadingEl.style.display = 'block';
+            
+            // 清空之前的数据
+            document.getElementById('report-period').textContent = `加载 ${symbol} 分析...`;
+            document.getElementById('market-signal').textContent = '-';
+            document.getElementById('strong-buys').innerHTML = '<div class="text-gray-400 text-sm">加载中...</div>';
+            document.getElementById('buy-candidates').innerHTML = '<div class="text-gray-400 text-sm">加载中...</div>';
             
             try {
                 // 调用单个股票信号 API
