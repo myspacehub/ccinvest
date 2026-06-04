@@ -304,7 +304,22 @@ class MultiAssetStrategyEngine:
             interval,
             min(strength, 55),
             min(confidence, 67),
-            reasons + risk_notes + ["结论：优势不够清晰，等待趋势、动量、量能至少两项同步。"],
+            reasons + risk_notes + self._wait_analysis(
+                profile,
+                indicators,
+                bull,
+                bear,
+                trend_up,
+                trend_down,
+                momentum_up,
+                momentum_down,
+                long_term_bull,
+                long_term_bear,
+                volume_confirmed,
+                overbought,
+                oversold,
+                overextended,
+            ),
             indicators,
         )
 
@@ -405,6 +420,118 @@ class MultiAssetStrategyEngine:
         scale = max(0.35, min(1.0, (confidence - 45) / 40))
         volatility_penalty = 0.6 if atr_pct >= profile.high_atr_pct else 1.0
         return round(min(profile.max_risk_pct, profile.base_risk_pct * scale * volatility_penalty), 4)
+
+    def _wait_analysis(
+        self,
+        profile: StrategyProfile,
+        indicators: Dict,
+        bull: int,
+        bear: int,
+        trend_up: bool,
+        trend_down: bool,
+        momentum_up: bool,
+        momentum_down: bool,
+        long_term_bull: bool,
+        long_term_bear: bool,
+        volume_confirmed: bool,
+        overbought: bool,
+        oversold: bool,
+        overextended: bool,
+    ) -> List[str]:
+        missing = []
+        confirmations = []
+        asset_class = profile.asset_class
+
+        if bull > bear:
+            stance = "偏多观察"
+            if trend_up:
+                confirmations.append("趋势结构偏多")
+            else:
+                missing.append("价格重新站上20日均线，并让20/50日均线恢复多头排列")
+            if momentum_up:
+                confirmations.append("动量偏多")
+            else:
+                missing.append(self._bullish_momentum_gap(indicators))
+            if not volume_confirmed:
+                missing.append(f"成交量放大到20日均量的{profile.volume_confirm_ratio:.2f}倍以上")
+        elif bear > bull:
+            stance = "防守观察"
+            if trend_down:
+                confirmations.append("趋势结构转弱")
+            else:
+                missing.append("价格跌破20日均线后，20/50日均线结构继续转弱")
+            if momentum_down:
+                confirmations.append("动量偏空")
+            else:
+                missing.append(self._bearish_momentum_gap(indicators))
+            if not volume_confirmed:
+                missing.append(f"下跌或反弹失败时成交量达到20日均量的{profile.volume_confirm_ratio:.2f}倍以上")
+        else:
+            stance = "震荡观察"
+            missing.append("价格脱离均线缠绕区，形成明确的20/50日均线方向")
+            missing.append("MACD、RSI给出同向动量确认")
+            if not volume_confirmed:
+                missing.append(f"成交量达到20日均量的{profile.volume_confirm_ratio:.2f}倍以上")
+
+        if asset_class == "us_equity":
+            if long_term_bull:
+                confirmations.append("价格仍在200日均线上方")
+            elif long_term_bear:
+                missing.append("重新收复200日均线，或仅按战术反弹处理")
+            else:
+                missing.append("补足200日均线长期过滤数据")
+
+        risk_state = []
+        if overbought:
+            risk_state.append("短线过热，不适合追高")
+        if oversold:
+            risk_state.append("短线超卖，不适合追空")
+        if overextended:
+            risk_state.append("价格偏离20日均线过远，等待回踩更合理")
+        if indicators.get("adx") is not None and indicators["adx"] < 22:
+            risk_state.append("ADX偏低，趋势持续性不足")
+        if not risk_state:
+            risk_state.append("风险主要来自确认项不足，而不是单一指标极端")
+
+        confirmation_text = "；".join(confirmations) if confirmations else "暂无足够同向确认"
+        missing_text = "；".join(missing[:3]) if missing else "保持现有趋势、动量和量能同步"
+        risk_text = "；".join(risk_state)
+        trigger_text = "等上述缺口补齐后再升级信号" if len(missing) <= 1 else "等上述缺口至少补齐两项后再升级信号"
+
+        return [
+            f"结论：{stance}，已确认：{confirmation_text}。",
+            f"缺口：{missing_text}。",
+            f"触发条件：{trigger_text}；当前风险：{risk_text}。",
+        ]
+
+    def _bullish_momentum_gap(self, indicators: Dict) -> str:
+        gaps = []
+        rsi = indicators.get("rsi")
+        macd_hist = indicators.get("macd_hist")
+        macd_delta = indicators.get("macd_hist_delta")
+        if rsi is not None:
+            if rsi < 45:
+                gaps.append("RSI回到45以上")
+            elif rsi > 68:
+                gaps.append("RSI降温到68以下")
+        if macd_hist is not None and macd_hist <= 0:
+            gaps.append("MACD柱体转正")
+        elif macd_delta is not None and macd_delta < 0:
+            gaps.append("MACD柱体停止收缩并连续改善")
+        return "、".join(gaps) if gaps else "动量指标重新同向偏多"
+
+    def _bearish_momentum_gap(self, indicators: Dict) -> str:
+        gaps = []
+        rsi = indicators.get("rsi")
+        macd_hist = indicators.get("macd_hist")
+        macd_delta = indicators.get("macd_hist_delta")
+        if rsi is not None and rsi > 55:
+            gaps.append("RSI跌破55")
+        if macd_hist is not None and macd_hist >= 0:
+            gaps.append("MACD柱体转负")
+        elif macd_delta is not None and macd_delta > 0:
+            gaps.append("MACD柱体重新走弱")
+        return "、".join(gaps) if gaps else "动量指标重新同向偏空"
 
     def _wait(self, symbol, asset_class, interval, strength, confidence, reasons, indicators):
         return self._result(
