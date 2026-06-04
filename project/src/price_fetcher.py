@@ -28,7 +28,8 @@ COINGECKO_IDS = {
     "MATIC": "matic-network", "UNI": "uniswap", "ATOM": "cosmos",
     "LTC": "litecoin", "FIL": "filecoin", "AVAX": "avalanche-2",
     "ARB": "arbitrum", "OP": "optimism", "PEPE": "pepe",
-    "SHIB": "shiba-inu", "BONK": "bonk", "NEAR": "near"
+    "SHIB": "shiba-inu", "BONK": "bonk", "NEAR": "near",
+    "HYPE": "hyperliquid"
 }
 
 COINBASE_TICKERS = {
@@ -46,6 +47,50 @@ def get_cached(key: str) -> Optional[Dict]:
 
 def set_cached(key: str, data: Dict):
     _cache[key] = (data, time.time())
+
+def normalize_crypto_symbol(symbol: str) -> str:
+    return symbol.upper().replace("USDT", "").replace("USD", "").strip()
+
+def resolve_coingecko_id(symbol: str) -> Optional[str]:
+    """Resolve a ticker to CoinGecko coin id using static aliases first, then public search."""
+    normalized = normalize_crypto_symbol(symbol)
+    if not normalized:
+        return None
+
+    mapped = COINGECKO_IDS.get(normalized)
+    if mapped:
+        return mapped
+
+    cache_key = f"cg_id_{normalized}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached.get("id")
+
+    try:
+        r = requests.get(
+            "https://api.coingecko.com/api/v3/search",
+            params={"query": normalized},
+            timeout=8
+        )
+        if not r.ok:
+            return None
+        coins = r.json().get("coins", [])
+        if not coins:
+            return None
+
+        exact_symbol = [
+            coin for coin in coins
+            if str(coin.get("symbol", "")).upper() == normalized
+        ]
+        candidates = exact_symbol or coins
+        candidates.sort(key=lambda coin: coin.get("market_cap_rank") or 10**9)
+        coin_id = candidates[0].get("id")
+        if coin_id:
+            set_cached(cache_key, {"id": coin_id})
+            return coin_id
+    except Exception as e:
+        logger.debug(f"CoinGecko ID 解析失败 {normalized}: {e}")
+    return None
 
 def fetch_cryptocompare(symbol: str) -> Optional[Dict]:
     """CryptoCompare API - 免费稳定"""
@@ -86,7 +131,7 @@ def fetch_coinlore(symbol: str) -> Optional[Dict]:
 
 def fetch_coingecko(symbol: str) -> Optional[Dict]:
     """CoinGecko API"""
-    cg_id = COINGECKO_IDS.get(symbol.upper())
+    cg_id = resolve_coingecko_id(symbol)
     if not cg_id:
         return None
 
@@ -107,7 +152,7 @@ def fetch_coingecko(symbol: str) -> Optional[Dict]:
 
 def fetch_coingecko_market(symbol: str) -> Optional[Dict]:
     """CoinGecko 市场数据"""
-    cg_id = COINGECKO_IDS.get(symbol.upper())
+    cg_id = resolve_coingecko_id(symbol)
     if not cg_id:
         return None
 

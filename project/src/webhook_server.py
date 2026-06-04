@@ -34,10 +34,11 @@ load_dotenv()
 
 # 导入优化的价格获取模块
 try:
-    from src.price_fetcher import get_price_with_fallback, get_market_data_with_fallback
+    from src.price_fetcher import get_price_with_fallback, get_market_data_with_fallback, resolve_coingecko_id
     HAS_PRICE_FETCHER = True
 except ImportError:
     HAS_PRICE_FETCHER = False
+    resolve_coingecko_id = None
     logger.warning("price_fetcher 模块不可用，使用旧版数据获取")
 
 # =====================================================
@@ -542,7 +543,8 @@ async def webhook_price(symbol: str, asset_class: str = "auto"):
         "INJ": "injective-protocol", "INJUSDT": "injective-protocol",
         "TIA": "celestia", "TIAUSDT": "celestia",
         "SUI": "sui", "SUIUSDT": "sui",
-        "NEAR": "near", "NEARUSDT": "near"
+        "NEAR": "near", "NEARUSDT": "near",
+        "HYPE": "hyperliquid", "HYPEUSDT": "hyperliquid"
     }
     # 辅助函数: 获取市场详细数据 (带备用方案)
     # 简单的内存缓存（避免重复请求导致 rate limit）
@@ -588,7 +590,7 @@ async def webhook_price(symbol: str, asset_class: str = "auto"):
                 data = r.json()
                 m = data.get("market_data", {})
                 market_cap = m.get("market_cap", {}).get("usd", 0)
-                if market_cap and market_cap > 0:
+                if market_cap or m.get("total_volume", {}).get("usd") or m.get("current_price", {}).get("usd"):
                     return {
                         "market_cap": market_cap,
                         "market_cap_rank": data.get("market_cap_rank") or 0,
@@ -619,18 +621,16 @@ async def webhook_price(symbol: str, asset_class: str = "auto"):
                 data2 = r2.json()
                 if data2 and len(data2) > 0:
                     coin = data2[0]
-                    market_cap = coin.get("market_cap") or 0
-                    if market_cap > 0:
-                        return {
-                            "market_cap": market_cap,
-                            "market_cap_rank": coin.get("market_cap_rank") or 0,
-                            "total_volume": coin.get("total_volume") or 0,
-                            "high_24h": coin.get("high_24h") or 0,
-                            "low_24h": coin.get("low_24h") or 0,
-                            "name": coin.get("name", symbol),
-                            "symbol": coin.get("symbol", symbol).upper(),
-                            "image": coin.get("image", "")
-                        }
+                    return {
+                        "market_cap": coin.get("market_cap") or 0,
+                        "market_cap_rank": coin.get("market_cap_rank") or 0,
+                        "total_volume": coin.get("total_volume") or 0,
+                        "high_24h": coin.get("high_24h") or 0,
+                        "low_24h": coin.get("low_24h") or 0,
+                        "name": coin.get("name", symbol),
+                        "symbol": coin.get("symbol", symbol).upper(),
+                        "image": coin.get("image", "")
+                    }
         except Exception as e:
             logger.debug(f"market方案2失败: {e}")
         
@@ -639,12 +639,19 @@ async def webhook_price(symbol: str, asset_class: str = "auto"):
             return {"change_24h": change_24h}
         return {}
     
+    cg_id = cg_map.get(symbol.upper())
+    if not cg_id and HAS_PRICE_FETCHER and resolve_coingecko_id and resolved_asset_class != "us_equity":
+        cg_id = resolve_coingecko_id(base_symbol)
+
     # 使用优化的价格获取模块
     if HAS_PRICE_FETCHER and resolved_asset_class != "us_equity":
         price_data = get_price_with_fallback(base_symbol)
         market_data = get_market_data_with_fallback(base_symbol)
+        if cg_id and not any(market_data.get(key) for key in ("market_cap", "total_volume", "high_24h", "low_24h")):
+            market_data = get_market_data(cg_id)
         
         if price_data and price_data.get('price', 0) > 0:
+            price_source = price_data.get("source", "unknown")
             # 优先使用 market_data，否则使用 price_data 中的数据
             market_cap = market_data.get('market_cap', 0) or price_data.get('market_cap', 0)
             return {
@@ -661,10 +668,9 @@ async def webhook_price(symbol: str, asset_class: str = "auto"):
                 "low_24h": market_data.get("low_24h", 0),
                 "name": market_data.get("name", symbol),
                 "image": market_data.get("image", ""),
+                "sources": [{"source": price_source, "price": price_data.get("price", 0), "change_24h": price_data.get("change_24h", 0)}],
                 "timestamp": datetime.utcnow().isoformat()
             }
-    
-    cg_id = cg_map.get(symbol.upper())
     
     # 简单的内存缓存（避免 rate limit）
     _cg_cache = getattr(webhook_price, '_cg_cache', {})
@@ -1068,6 +1074,23 @@ async def webhook_history(symbol: str, interval: str = "1d", limit: int = 365, a
                     "source": "yahoo_finance",
                     "timestamp": datetime.utcnow().isoformat()
                 }
+            coingecko_data = fetch_coingecko_ohlc_history(normalized_symbol, interval, limit)
+            if coingecko_data:
+                return {
+                    "symbol": normalized_symbol,
+                    "interval": interval,
+                    "count": len(coingecko_data),
+                    "validation": {
+                        "is_valid": True,
+                        "quality": "good",
+                        "score": 78,
+                        "issues": [],
+                        "warnings": ["Binance/Yahoo 不可用，已切换到 CoinGecko OHLC"]
+                    },
+                    "data": coingecko_data,
+                    "source": "coingecko_ohlc",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
             else:
                 raise HTTPException(status_code=404, detail="所有数据源均不可用")
         
@@ -1168,6 +1191,98 @@ def fetch_yahoo_history(symbol: str, interval: str, limit: int) -> List[Dict[str
         return []
 
 
+def fetch_coingecko_ohlc_history(symbol: str, interval: str, limit: int) -> List[Dict[str, float]]:
+    """从 CoinGecko 获取 OHLC，覆盖 Binance/Yahoo 未收录的新币。"""
+    import requests
+
+    if not resolve_coingecko_id:
+        return []
+
+    base_symbol = symbol.upper().replace("USDT", "").replace("USD", "")
+    cg_id = resolve_coingecko_id(base_symbol)
+    if not cg_id:
+        return []
+
+    days_map = {
+        "1h": 7,
+        "1d": 365,
+        "1w": 365,
+        "1M": "max",
+    }
+    days = days_map.get(interval, 365)
+
+    def bucket_for(timestamp: float) -> str:
+        dt = datetime.utcfromtimestamp(timestamp / 1000)
+        return dt.strftime("%Y-%m-%dT%H") if interval == "1h" else dt.date().isoformat()
+
+    try:
+        volume_by_bucket = {}
+        prices_by_bucket = {}
+        try:
+            market_response = requests.get(
+                f"https://api.coingecko.com/api/v3/coins/{cg_id}/market_chart",
+                params={"vs_currency": "usd", "days": days},
+                timeout=12
+            )
+            if market_response.ok:
+                market_payload = market_response.json()
+                for timestamp, volume in market_payload.get("total_volumes", []):
+                    bucket = bucket_for(timestamp)
+                    volume_by_bucket[bucket] = float(volume or 0)
+                for timestamp, price in market_payload.get("prices", []):
+                    bucket = bucket_for(timestamp)
+                    prices_by_bucket.setdefault(bucket, []).append(float(price))
+        except Exception as e:
+            logger.debug(f"CoinGecko market_chart 历史失败 {base_symbol}: {e}")
+
+        try:
+            response = requests.get(
+                f"https://api.coingecko.com/api/v3/coins/{cg_id}/ohlc",
+                params={"vs_currency": "usd", "days": days},
+                timeout=12
+            )
+            response.raise_for_status()
+            payload = response.json()
+            rows = []
+            for item in payload:
+                if not isinstance(item, list) or len(item) < 5:
+                    continue
+                timestamp, open_price, high_price, low_price, close_price = item[:5]
+                dt = datetime.utcfromtimestamp(timestamp / 1000)
+                bucket = bucket_for(timestamp)
+                rows.append({
+                    "time": dt.isoformat(),
+                    "open": float(open_price),
+                    "high": float(high_price),
+                    "low": float(low_price),
+                    "close": float(close_price),
+                    "volume": volume_by_bucket.get(bucket, 0.0),
+                })
+            if rows:
+                return rows[-limit:]
+        except Exception as e:
+            logger.debug(f"CoinGecko OHLC 端点失败 {base_symbol}: {e}")
+
+        rows = []
+        for bucket in sorted(prices_by_bucket):
+            prices = prices_by_bucket[bucket]
+            if not prices:
+                continue
+            dt = datetime.fromisoformat(f"{bucket}:00:00" if interval == "1h" else f"{bucket}T00:00:00")
+            rows.append({
+                "time": dt.isoformat(),
+                "open": prices[0],
+                "high": max(prices),
+                "low": min(prices),
+                "close": prices[-1],
+                "volume": volume_by_bucket.get(bucket, 0.0),
+            })
+        return rows[-limit:]
+    except Exception as e:
+        logger.warning(f"CoinGecko OHLC 历史数据失败 {base_symbol}: {e}")
+        return []
+
+
 async def load_history_rows(symbol: str, interval: str, limit: int) -> Dict:
     """Load OHLC rows from Binance first, Yahoo Finance as fallback."""
     from src.collector import DataCollector
@@ -1209,7 +1324,24 @@ async def load_history_rows(symbol: str, interval: str, limit: int) -> Dict:
     
     yahoo_data = fetch_yahoo_history(normalized_symbol, interval, limit)
     if not yahoo_data:
-        raise HTTPException(status_code=404, detail="所有数据源均不可用")
+        coingecko_data = fetch_coingecko_ohlc_history(normalized_symbol, interval, limit)
+        if not coingecko_data:
+            raise HTTPException(status_code=404, detail="所有数据源均不可用")
+        return {
+            "symbol": normalized_symbol,
+            "interval": interval,
+            "count": len(coingecko_data),
+            "validation": {
+                "is_valid": True,
+                "quality": "good",
+                "score": 78,
+                "issues": [],
+                "warnings": ["Binance/Yahoo 不可用，已切换到 CoinGecko OHLC"]
+            },
+            "data": coingecko_data,
+            "source": "coingecko_ohlc",
+            "timestamp": datetime.utcnow().isoformat()
+        }
     
     return {
         "symbol": normalized_symbol,
