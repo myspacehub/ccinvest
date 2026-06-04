@@ -25,6 +25,34 @@ load_dotenv()
 
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 
+US_EQUITY_2026_REGIME = {
+    "name": "2026H2_QUALITY_AI_EARNINGS",
+    "valid_until": "2026-12-31",
+    "description": "2026剩余时间：偏向质量成长、AI资本开支受益链、盈利兑现和资金流确认，同时压低高估值/高波动/无量追高信号。",
+    "weights": {
+        "technical": 0.30,
+        "flow": 0.22,
+        "institutional": 0.30,
+        "valuation": 0.18,
+    },
+    "buy_threshold": 72,
+    "sell_threshold": 32,
+}
+
+AI_2026_INDUSTRY_KEYWORDS = (
+    "semiconductor", "software", "cloud", "data", "infrastructure",
+    "electrical", "power", "communication", "internet", "hardware"
+)
+
+QUALITY_2026_SECTORS = {
+    "Technology",
+    "Communication Services",
+    "Industrials",
+    "Healthcare",
+    "Financial Services",
+    "Consumer Defensive",
+}
+
 
 # =====================================================
 # 数据源：yfinance 免费获取
@@ -118,6 +146,123 @@ def fetch_earnings_dates(symbol: str) -> List[Dict]:
         ]
     except Exception as e:
         return []
+
+
+def _safe_float(value: Any, default: Optional[float] = None) -> Optional[float]:
+    try:
+        if value in (None, "", "N/A"):
+            return default
+        numeric = float(value)
+        if math.isfinite(numeric):
+            return numeric
+    except (TypeError, ValueError):
+        pass
+    return default
+
+
+def get_us_equity_strategy_regime(as_of: Optional[datetime] = None) -> Dict:
+    """Return the active US equity signal regime without mutating global config."""
+    current = as_of or datetime.now(SHANGHAI_TZ)
+    cutoff = datetime.strptime(US_EQUITY_2026_REGIME["valid_until"], "%Y-%m-%d").date()
+    if current.date() <= cutoff:
+        return US_EQUITY_2026_REGIME
+    return {
+        "name": "BASELINE_US_EQUITY",
+        "valid_until": None,
+        "description": "基准美股信号：技术、资金流、机构质量与估值均衡加权。",
+        "weights": {
+            "technical": 0.35,
+            "flow": 0.25,
+            "institutional": 0.25,
+            "valuation": 0.15,
+        },
+        "buy_threshold": 70,
+        "sell_threshold": 30,
+    }
+
+
+def compute_2026_regime_adjustment(symbol: str, info: Dict, tech: Dict,
+                                   flow: Dict, inst: Dict, val: Dict) -> Dict:
+    """Tilt signals toward the 2026H2 quality/AI/earnings setup."""
+    regime = get_us_equity_strategy_regime()
+    if regime["name"] != US_EQUITY_2026_REGIME["name"]:
+        return {"adjustment": 0.0, "tags": [], "reasons": [], "warnings": []}
+
+    sector = info.get("sector") or ""
+    industry = (info.get("industry") or "").lower()
+    tags: List[str] = []
+    reasons: List[str] = []
+    warnings: List[str] = []
+    adjustment = 0.0
+
+    earnings_growth = _safe_float(info.get("earningsGrowth"), 0.0) or 0.0
+    revenue_growth = _safe_float(info.get("revenueGrowth"), 0.0) or 0.0
+    profit_margin = _safe_float(info.get("profitMargins"), 0.0) or 0.0
+    operating_margin = _safe_float(info.get("operatingMargins"), 0.0) or 0.0
+    free_cashflow = _safe_float(info.get("freeCashflow"), 0.0) or 0.0
+    debt_to_equity = _safe_float(info.get("debtToEquity"))
+    forward_pe = _safe_float(info.get("forwardPE"))
+    peg = _safe_float(info.get("pegRatio"))
+    beta = _safe_float(info.get("beta"), 1.0) or 1.0
+
+    quality_points = 0
+    if earnings_growth >= 0.12:
+        quality_points += 1
+    if revenue_growth >= 0.08:
+        quality_points += 1
+    if profit_margin >= 0.15 or operating_margin >= 0.18:
+        quality_points += 1
+    if free_cashflow > 0:
+        quality_points += 1
+    if debt_to_equity is None or debt_to_equity <= 120:
+        quality_points += 1
+
+    if quality_points >= 4:
+        adjustment += 5
+        tags.append("QUALITY_COMPOUNDER")
+        reasons.append("2026策略加分：盈利、利润率、现金流或杠杆质量较好。")
+    elif quality_points <= 1:
+        adjustment -= 4
+        warnings.append("2026策略扣分：质量因子不足，难以承受高估值和利率粘性。")
+
+    is_ai_chain = sector in {"Technology", "Communication Services", "Industrials", "Utilities"} or any(
+        keyword in industry for keyword in AI_2026_INDUSTRY_KEYWORDS
+    )
+    if is_ai_chain and tech.get("signal") == "BULLISH" and flow.get("broad_signal") != "RISK_OFF":
+        adjustment += 4
+        tags.append("AI_CAPEX_BENEFICIARY")
+        reasons.append("2026策略加分：处于AI资本开支/数字基础设施受益链且趋势未被资金流否定。")
+
+    if sector in QUALITY_2026_SECTORS and val.get("score", 50) >= 45 and inst.get("score", 50) >= 55:
+        adjustment += 2
+        tags.append("SELECTIVE_QUALITY_SECTOR")
+
+    if flow.get("broad_signal") in {"RISK_ON", "QUALITY_ROTATION"}:
+        adjustment += 3
+        reasons.append(f"2026策略加分：宽基资金流为 {flow.get('broad_signal')}。")
+    elif flow.get("broad_signal") == "RISK_OFF":
+        adjustment -= 8
+        warnings.append("2026策略扣分：宽基ETF资金流偏防守，不放大买入信号。")
+
+    if forward_pe and forward_pe > 38 and earnings_growth < 0.15:
+        adjustment -= 5
+        warnings.append(f"2026策略扣分：Forward PE {forward_pe:.1f} 偏高但盈利增速不足。")
+    if peg and peg > 2.5:
+        adjustment -= 3
+        warnings.append(f"2026策略扣分：PEG {peg:.2f} 偏高。")
+    if beta > 1.6 or tech.get("atr_pct", 0) >= 8:
+        adjustment -= 4
+        warnings.append("2026策略扣分：高Beta或高ATR下仓位需要降级。")
+    if tech.get("rsi", 50) >= 76:
+        adjustment -= 5
+        warnings.append("2026策略扣分：RSI过热，避免在高估值环境中追涨。")
+
+    return {
+        "adjustment": round(max(-15, min(15, adjustment)), 1),
+        "tags": tags[:4],
+        "reasons": reasons[:4],
+        "warnings": warnings[:4],
+    }
 
 
 # =====================================================
@@ -700,6 +845,8 @@ class USEquitySignal:
     flow_detail: Dict
     institutional_detail: Dict
     valuation_detail: Dict
+    strategy_regime: Dict
+    regime_detail: Dict
     
     earnings_dates: List[Dict]
     info: Dict
@@ -739,20 +886,34 @@ def generate_us_equity_signal(symbol: str,
     inst = compute_institutional_score(symbol, info) if fetch_deep else {"score": 50, "signals": [], "recommendation": "unknown"}
     val = compute_valuation_score(info) if fetch_deep else {"score": 50, "signals": []}
     
-    # 3. 综合评分（加权）
-    w_tech, w_flow, w_inst, w_val = 0.35, 0.25, 0.25, 0.15
+    # 3. 综合评分（2026剩余时间偏质量、AI受益链、盈利兑现和资金流确认）
+    regime = get_us_equity_strategy_regime()
+    weights = regime["weights"]
+    w_tech = weights["technical"]
+    w_flow = weights["flow"]
+    w_inst = weights["institutional"]
+    w_val = weights["valuation"]
     composite = (
         tech["score"] * w_tech +
         flow["score"] * w_flow +
         inst["score"] * w_inst +
         val["score"] * w_val
     )
+    regime_detail = compute_2026_regime_adjustment(symbol, info, tech, flow, inst, val)
+    composite = max(0, min(100, composite + regime_detail.get("adjustment", 0)))
     
     # 4. 信号方向
-    if composite >= 70 and tech["signal"] == "BULLISH":
+    buy_threshold = regime.get("buy_threshold", 70)
+    sell_threshold = regime.get("sell_threshold", 30)
+    flow_signal = flow.get("broad_signal")
+    buy_blocked_by_regime = (
+        regime["name"] == US_EQUITY_2026_REGIME["name"] and
+        (flow_signal == "RISK_OFF" or tech.get("rsi", 50) >= 76)
+    )
+    if composite >= buy_threshold and tech["signal"] == "BULLISH" and not buy_blocked_by_regime:
         signal = "BUY"
         confidence = min(0.95, 0.5 + composite / 200)
-    elif composite <= 30 and tech["signal"] == "BEARISH":
+    elif composite <= sell_threshold and tech["signal"] == "BEARISH":
         signal = "SELL"
         confidence = min(0.95, 0.5 + (100 - composite) / 200)
     elif composite >= 55:
@@ -818,6 +979,7 @@ def generate_us_equity_signal(symbol: str,
         reasons.extend(val["signals"][:2])
     if flow.get("broad_signal") in ["RISK_ON", "QUALITY_ROTATION"]:
         reasons.append(f"资金流信号: {flow['broad_signal']}（ETF 净流入）")
+    reasons.extend(regime_detail.get("reasons", []))
     
     warnings = []
     if momentum == "OVERBOUGHT":
@@ -828,6 +990,7 @@ def generate_us_equity_signal(symbol: str,
         warnings.append(f"高风险：Beta={beta_val:.1f}, ATR%={atr_pct:.1f}%")
     if flow.get("broad_signal") == "RISK_OFF":
         warnings.append("资金流: 宽基 ETF 净流出，市场情绪偏弱")
+    warnings.extend(regime_detail.get("warnings", []))
     
     # 9. 财报日期
     earnings_dates = fetch_earnings_dates(symbol) if fetch_deep else []
@@ -856,6 +1019,15 @@ def generate_us_equity_signal(symbol: str,
         flow_detail=flow,
         institutional_detail=inst,
         valuation_detail=val,
+        strategy_regime={
+            "name": regime["name"],
+            "valid_until": regime.get("valid_until"),
+            "description": regime["description"],
+            "weights": regime["weights"],
+            "buy_threshold": buy_threshold,
+            "sell_threshold": sell_threshold,
+        },
+        regime_detail=regime_detail,
         earnings_dates=earnings_dates,
         info={k: v for k, v in info.items() if v is not None},
         timestamp=datetime.now(SHANGHAI_TZ).isoformat(),
@@ -891,6 +1063,8 @@ def signal_to_dict(sig: USEquitySignal) -> Dict:
         "technical_detail": sig.technical_detail,
         "flow_signal": sig.flow_detail.get("broad_signal"),
         "sector_flow": sig.flow_detail.get("sector_signal"),
+        "strategy_regime": sig.strategy_regime,
+        "regime_detail": sig.regime_detail,
         "earnings_dates": sig.earnings_dates,
         "timestamp": sig.timestamp,
     }
@@ -1027,6 +1201,8 @@ def _generate_mock_signal(symbol: str, info: Dict) -> USEquitySignal:
         flow_detail={"score": flow_score, "broad_signal": "UNKNOWN"},
         institutional_detail={"score": inst_score},
         valuation_detail={"score": val_score},
+        strategy_regime=get_us_equity_strategy_regime(),
+        regime_detail={"adjustment": 0.0, "tags": ["DEMO"], "reasons": [], "warnings": []},
         earnings_dates=[],
         info=info,
         timestamp=datetime.now(SHANGHAI_TZ).isoformat(),
@@ -1062,4 +1238,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

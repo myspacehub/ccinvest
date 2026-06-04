@@ -45,15 +45,14 @@ PROFILES: Dict[AssetClass, StrategyProfile] = {
     ),
     "us_equity": StrategyProfile(
         asset_class="us_equity",
-        min_bars=30
-        ,
-        min_confidence=50,
-        high_atr_pct=6.0,
-        extreme_atr_pct=10.0,
+        min_bars=50,
+        min_confidence=58,
+        high_atr_pct=5.5,
+        extreme_atr_pct=9.0,
         base_risk_pct=0.008,
-        max_risk_pct=0.02,
-        volume_confirm_ratio=1.1,
-        overextension_atr_multiple=2.5,
+        max_risk_pct=0.016,
+        volume_confirm_ratio=1.15,
+        overextension_atr_multiple=2.2,
     ),
 }
 
@@ -103,6 +102,10 @@ class MultiAssetStrategyEngine:
         close = indicators["close"]
         atr = indicators["atr"]
         atr_pct = indicators["atr_pct"]
+        is_2026_us_equity = asset_class == "us_equity"
+        if is_2026_us_equity:
+            reasons.append("2026美股策略：优先质量成长/AI受益顺势信号，通胀和利率粘性下避免无量追高。")
+
         trend_up = (
             close > indicators["sma20"]
             and indicators["sma20"] > indicators["sma50"]
@@ -129,12 +132,15 @@ class MultiAssetStrategyEngine:
 
         if long_term_bull:
             bull += 1
-            confidence += 5
+            confidence += 7 if is_2026_us_equity else 5
             reasons.append("长期过滤：价格位于200均线上方。")
         elif long_term_bear and asset_class == "us_equity":
             bear += 1
-            confidence += 5
+            confidence += 8
             reasons.append("长期过滤：美股价格低于200均线，优先防守。")
+        elif is_2026_us_equity:
+            confidence -= 8
+            risk_notes.append("长期过滤：缺少200均线确认，2026美股信号不放大仓位。")
 
         momentum_up = (
             45 <= indicators["rsi"] <= 68
@@ -169,21 +175,26 @@ class MultiAssetStrategyEngine:
             confidence += 8
             reasons.append("量能：当前成交量高于20期均量，信号有量能确认。")
         else:
-            confidence -= 4 if asset_class == "crypto" else 8
+            confidence -= 4 if asset_class == "crypto" else 12
             risk_notes.append("量能未确认，不适合激进追价。")
 
-        overbought = False
-        oversold = False
+        overbought = is_2026_us_equity and (
+            indicators["rsi"] >= 74 or indicators["distance_sma20_pct"] >= 8
+        )
+        oversold = is_2026_us_equity and indicators["rsi"] <= 28
         if overbought:
             bull -= 1
-            confidence -= 10
-            risk_notes.append("短线过热，继续追多的风险收益比下降。")
+            confidence -= 14
+            risk_notes.append("短线过热或远离20均线，2026高估值环境下等待回踩。")
         if oversold:
             bear -= 1
             confidence -= 10
             risk_notes.append("短线超卖，继续追空容易遭遇反抽。")
 
-        overextended = False  # 禁用以产生更多信号
+        overextended = (
+            is_2026_us_equity and
+            indicators["distance_sma20_pct"] >= profile.overextension_atr_multiple * max(1.0, atr_pct)
+        )
         if overextended:
             confidence -= 12
             risk_notes.append("价格偏离20均线过远，等待回踩/反抽确认更务实。")
@@ -207,15 +218,19 @@ class MultiAssetStrategyEngine:
         confidence = int(max(0, min(92, confidence)))
         risk_pct = self._risk_pct(profile, confidence, atr_pct)
 
-        if bull >= 5 and gap >= 2 and confidence >= 50:
-            stop = close - atr * (2.2 if asset_class == "crypto" else 1.8)
-            target = close + atr * (3.0 if asset_class == "crypto" else 2.4)
+        long_ready = bull >= 5 and gap >= 2 and confidence >= profile.min_confidence
+        if is_2026_us_equity:
+            long_ready = long_ready and long_term_bull and volume_confirmed and not overbought
+
+        if long_ready:
+            stop = close - atr * (2.2 if asset_class == "crypto" else 1.7)
+            target = close + atr * (3.0 if asset_class == "crypto" else 2.3)
             return self._result(
                 symbol,
                 asset_class,
                 interval,
                 "CAUTIOUS_LONG",
-                "谨慎做多",
+                "质量顺势多" if is_2026_us_equity else "谨慎做多",
                 "signal-buy",
                 strength,
                 confidence,
@@ -226,7 +241,7 @@ class MultiAssetStrategyEngine:
                 indicators,
             )
 
-        if bear >= 5 and gap >= 2 and confidence >= 50:
+        if bear >= 5 and gap >= 2 and confidence >= profile.min_confidence:
             stop = close + atr * (2.0 if asset_class == "crypto" else 1.6)
             target = close - atr * (2.6 if asset_class == "crypto" else 2.1)
             return self._result(
@@ -386,7 +401,7 @@ class MultiAssetStrategyEngine:
         reasons,
         indicators,
     ) -> Dict:
-        return {
+        result = {
             "symbol": symbol,
             "asset_class": asset_class,
             "interval": interval,
@@ -405,3 +420,11 @@ class MultiAssetStrategyEngine:
             },
             "disclaimer": "研究信号，不是投资建议；必须结合回测、流动性、事件风险和个人风险承受能力。",
         }
+        if asset_class == "us_equity":
+            result["strategy_regime"] = {
+                "name": "2026H2_QUALITY_AI_EARNINGS",
+                "valid_until": "2026-12-31",
+                "description": "优先质量成长、AI受益顺势、量能确认；通胀和利率粘性下避免无量追高。",
+                "requires": ["long_term_trend", "volume_confirmation", "not_overheated"],
+            }
+        return result
