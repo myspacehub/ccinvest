@@ -178,6 +178,27 @@ class MultiAssetStrategyEngine:
             confidence -= 4 if asset_class == "crypto" else 12
             risk_notes.append("量能未确认，不适合激进追价。")
 
+        if trend_up and momentum_up:
+            bull += 1
+            reasons.append("共振：趋势和动量同向偏多。")
+        elif trend_down and momentum_down:
+            bear += 1
+            reasons.append("共振：趋势和动量同向偏空。")
+
+        if indicators["adx"] >= 25 and bull != bear:
+            if bull > bear:
+                bull += 1
+            else:
+                bear += 1
+            reasons.append("方向确认：ADX显示趋势信号有延续性。")
+
+        if volume_confirmed and bull != bear:
+            if bull > bear:
+                bull += 1
+            else:
+                bear += 1
+            reasons.append("方向确认：放量支持当前主导方向。")
+
         overbought = is_2026_us_equity and (
             indicators["rsi"] >= 74 or indicators["distance_sma20_pct"] >= 8
         )
@@ -218,9 +239,26 @@ class MultiAssetStrategyEngine:
         confidence = int(max(0, min(92, confidence)))
         risk_pct = self._risk_pct(profile, confidence, atr_pct)
 
-        long_ready = bull >= 5 and gap >= 2 and confidence >= profile.min_confidence
+        long_threshold = 5 if asset_class == "crypto" else 4
+        short_threshold = 5 if asset_class == "crypto" else 4
+        long_ready = bull >= long_threshold and gap >= 2 and confidence >= profile.min_confidence
+        long_label = "谨慎做多"
         if is_2026_us_equity:
-            long_ready = long_ready and long_term_bull and volume_confirmed and not overbought
+            confirmed_quality_long = long_term_bull and (
+                volume_confirmed or (trend_up and momentum_up and confidence >= profile.min_confidence + 8)
+            )
+            tactical_trend_long = (
+                trend_up and
+                momentum_up and
+                indicators["adx"] >= 25 and
+                confidence >= profile.min_confidence + 8
+            )
+            long_ready = (
+                long_ready and
+                not overbought and
+                (confirmed_quality_long or tactical_trend_long)
+            )
+            long_label = "质量顺势多" if long_term_bull else "战术顺势多"
 
         if long_ready:
             stop = close - atr * (2.2 if asset_class == "crypto" else 1.7)
@@ -230,7 +268,7 @@ class MultiAssetStrategyEngine:
                 asset_class,
                 interval,
                 "CAUTIOUS_LONG",
-                "质量顺势多" if is_2026_us_equity else "谨慎做多",
+                long_label,
                 "signal-buy",
                 strength,
                 confidence,
@@ -241,7 +279,7 @@ class MultiAssetStrategyEngine:
                 indicators,
             )
 
-        if bear >= 5 and gap >= 2 and confidence >= profile.min_confidence:
+        if bear >= short_threshold and gap >= 2 and confidence >= profile.min_confidence:
             stop = close + atr * (2.0 if asset_class == "crypto" else 1.6)
             target = close - atr * (2.6 if asset_class == "crypto" else 2.1)
             return self._result(
@@ -407,6 +445,7 @@ class MultiAssetStrategyEngine:
             "interval": interval,
             "action": action,
             "label": label,
+            "recommendation": label,
             "class_name": class_name,
             "strength": int(strength),
             "confidence": int(confidence),
