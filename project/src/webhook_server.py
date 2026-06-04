@@ -1074,6 +1074,23 @@ async def webhook_history(symbol: str, interval: str = "1d", limit: int = 365, a
                     "source": "yahoo_finance",
                     "timestamp": datetime.utcnow().isoformat()
                 }
+            cryptocompare_data = fetch_cryptocompare_history(normalized_symbol, interval, limit)
+            if cryptocompare_data:
+                return {
+                    "symbol": normalized_symbol,
+                    "interval": interval,
+                    "count": len(cryptocompare_data),
+                    "validation": {
+                        "is_valid": True,
+                        "quality": "good",
+                        "score": 78,
+                        "issues": [],
+                        "warnings": ["Binance/Yahoo 不可用，已切换到 CryptoCompare"]
+                    },
+                    "data": cryptocompare_data,
+                    "source": "cryptocompare_history",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
             coingecko_data = fetch_coingecko_ohlc_history(normalized_symbol, interval, limit)
             if coingecko_data:
                 return {
@@ -1188,6 +1205,52 @@ def fetch_yahoo_history(symbol: str, interval: str, limit: int) -> List[Dict[str
         return rows[-limit:]
     except Exception as e:
         logger.warning(f"Yahoo Finance 历史数据失败: {e}")
+        return []
+
+
+def fetch_cryptocompare_history(symbol: str, interval: str, limit: int) -> List[Dict[str, float]]:
+    """从 CryptoCompare 获取历史 OHLC，覆盖部分新币的 K 线。"""
+    import requests
+
+    base_symbol = symbol.upper().replace("USDT", "").replace("USD", "")
+    endpoint_map = {
+        "1h": ("histohour", min(limit, 2000)),
+        "1d": ("histoday", min(limit, 2000)),
+        "1w": ("histoday", min(limit * 7, 2000)),
+        "1M": ("histoday", min(limit * 30, 2000)),
+    }
+    endpoint, request_limit = endpoint_map.get(interval, ("histoday", min(limit, 2000)))
+
+    try:
+        response = requests.get(
+            f"https://min-api.cryptocompare.com/data/v2/{endpoint}",
+            params={"fsym": base_symbol, "tsym": "USD", "limit": request_limit},
+            timeout=10
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("Response") != "Success":
+            return []
+        data = payload.get("Data", {}).get("Data", [])
+        rows = []
+        for item in data:
+            if not item or item.get("close") in (None, 0):
+                continue
+            rows.append({
+                "time": datetime.utcfromtimestamp(item["time"]).isoformat(),
+                "open": float(item.get("open") or item["close"]),
+                "high": float(item.get("high") or item["close"]),
+                "low": float(item.get("low") or item["close"]),
+                "close": float(item["close"]),
+                "volume": float(item.get("volumeto") or item.get("volumefrom") or 0),
+            })
+        if interval == "1w" and len(rows) > limit:
+            rows = rows[::7]
+        elif interval == "1M" and len(rows) > limit:
+            rows = rows[::30]
+        return rows[-limit:]
+    except Exception as e:
+        logger.warning(f"CryptoCompare 历史数据失败 {base_symbol}: {e}")
         return []
 
 
@@ -1324,6 +1387,23 @@ async def load_history_rows(symbol: str, interval: str, limit: int) -> Dict:
     
     yahoo_data = fetch_yahoo_history(normalized_symbol, interval, limit)
     if not yahoo_data:
+        cryptocompare_data = fetch_cryptocompare_history(normalized_symbol, interval, limit)
+        if cryptocompare_data:
+            return {
+                "symbol": normalized_symbol,
+                "interval": interval,
+                "count": len(cryptocompare_data),
+                "validation": {
+                    "is_valid": True,
+                    "quality": "good",
+                    "score": 78,
+                    "issues": [],
+                    "warnings": ["Binance/Yahoo 不可用，已切换到 CryptoCompare"]
+                },
+                "data": cryptocompare_data,
+                "source": "cryptocompare_history",
+                "timestamp": datetime.utcnow().isoformat()
+            }
         coingecko_data = fetch_coingecko_ohlc_history(normalized_symbol, interval, limit)
         if not coingecko_data:
             raise HTTPException(status_code=404, detail="所有数据源均不可用")

@@ -94,6 +94,16 @@ def resolve_coingecko_id(symbol: str) -> Optional[str]:
 
 def fetch_cryptocompare(symbol: str) -> Optional[Dict]:
     """CryptoCompare API - 免费稳定"""
+    full_data = fetch_cryptocompare_full(symbol)
+    if full_data:
+        return {
+            "price": full_data["price"],
+            "change_24h": full_data.get("change_24h", 0),
+            "market_cap": full_data.get("market_cap", 0),
+            "rank": 0,
+            "source": "cryptocompare"
+        }
+
     try:
         url = f"https://min-api.cryptocompare.com/data/price?fsym={symbol.upper()}&tsyms=USD"
         r = requests.get(url, timeout=5)
@@ -103,6 +113,38 @@ def fetch_cryptocompare(symbol: str) -> Optional[Dict]:
                 return {"price": float(data["USD"]), "source": "cryptocompare"}
     except:
         pass
+    return None
+
+def fetch_cryptocompare_full(symbol: str) -> Optional[Dict]:
+    """CryptoCompare full price payload with market stats."""
+    normalized = normalize_crypto_symbol(symbol)
+    if not normalized:
+        return None
+
+    try:
+        url = "https://min-api.cryptocompare.com/data/pricemultifull"
+        r = requests.get(url, params={"fsyms": normalized, "tsyms": "USD"}, timeout=8)
+        if not r.ok:
+            return None
+        raw = r.json().get("RAW", {}).get(normalized, {}).get("USD", {})
+        if not raw or not raw.get("PRICE"):
+            return None
+        image_url = raw.get("IMAGEURL") or ""
+        if image_url.startswith("/"):
+            image_url = f"https://www.cryptocompare.com{image_url}"
+        return {
+            "price": float(raw.get("PRICE") or 0),
+            "change_24h": float(raw.get("CHANGEPCT24HOUR") or 0),
+            "market_cap": float(raw.get("CIRCULATINGSUPPLYMKTCAP") or raw.get("MKTCAP") or 0),
+            "total_volume": float(raw.get("TOTALVOLUME24HTO") or raw.get("VOLUME24HOURTO") or 0),
+            "high_24h": float(raw.get("HIGH24HOUR") or raw.get("HIGHDAY") or 0),
+            "low_24h": float(raw.get("LOW24HOUR") or raw.get("LOWDAY") or 0),
+            "name": normalized,
+            "image": image_url,
+            "source": "cryptocompare"
+        }
+    except Exception as e:
+        logger.debug(f"CryptoCompare full payload 失败 {normalized}: {e}")
     return None
 
 def fetch_coinlore(symbol: str) -> Optional[Dict]:
@@ -176,6 +218,21 @@ def fetch_coingecko_market(symbol: str) -> Optional[Dict]:
     except:
         pass
     return None
+
+def fetch_cryptocompare_market(symbol: str) -> Optional[Dict]:
+    """CryptoCompare market stats fallback."""
+    data = fetch_cryptocompare_full(symbol)
+    if not data:
+        return None
+    return {
+        "market_cap": data.get("market_cap", 0),
+        "market_cap_rank": 0,
+        "total_volume": data.get("total_volume", 0),
+        "high_24h": data.get("high_24h", 0),
+        "low_24h": data.get("low_24h", 0),
+        "name": data.get("name", symbol),
+        "image": data.get("image", "")
+    }
 
 def fetch_coinbase(symbol: str) -> Optional[Dict]:
     """Coinbase API"""
@@ -282,6 +339,11 @@ def get_market_data_with_fallback(symbol: str) -> Dict:
     cg_data = fetch_coingecko_market(symbol)
     if cg_data:
         result = cg_data
+
+    if not result:
+        cc_data = fetch_cryptocompare_market(symbol)
+        if cc_data:
+            result = cc_data
 
     if result:
         set_cached(cache_key, result)
