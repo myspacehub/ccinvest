@@ -344,13 +344,14 @@
 
         .content-grid {
             display: grid;
-            grid-template-columns: minmax(0, 1.6fr) minmax(330px, 0.86fr);
+            grid-template-columns: minmax(0, 1.48fr) minmax(320px, 0.78fr) minmax(260px, 0.58fr);
             gap: 14px;
             align-items: start;
         }
 
         .main-column,
         .side-column,
+        .watch-column,
         .report-view {
             display: grid;
             gap: 14px;
@@ -635,6 +636,96 @@
             font-size: 1.16rem;
             font-weight: 900;
             overflow-wrap: anywhere;
+        }
+
+        .watchlist-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .watchlist-button {
+            min-height: 34px;
+            padding: 0 10px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text);
+            background: var(--surface-2);
+            font-weight: 800;
+        }
+
+        .watchlist-button:hover {
+            transform: translateY(-1px);
+            border-color: #496166;
+        }
+
+        .watchlist-stack {
+            display: grid;
+            gap: 8px;
+        }
+
+        .watchlist-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 10px;
+            align-items: center;
+            min-height: 58px;
+            padding: 10px;
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius);
+            background: rgba(255, 255, 255, 0.018);
+        }
+
+        .watchlist-row.active {
+            border-color: rgba(53, 208, 127, 0.72);
+            background: var(--green-soft);
+        }
+
+        .watchlist-main {
+            min-width: 0;
+            border: 0;
+            padding: 0;
+            color: inherit;
+            text-align: left;
+            background: transparent;
+        }
+
+        .watch-symbol {
+            font-size: 0.98rem;
+            font-weight: 900;
+            overflow-wrap: anywhere;
+        }
+
+        .watch-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 0.78rem;
+        }
+
+        .watch-price {
+            margin-top: 6px;
+            color: var(--text);
+            font-weight: 900;
+        }
+
+        .watch-remove {
+            width: 30px;
+            height: 30px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--muted);
+            background: #0f1517;
+            font-weight: 900;
+        }
+
+        .watch-remove:hover {
+            border-color: var(--red);
+            color: #ffd7d7;
+            background: var(--red-soft);
         }
 
         .report-toolbar {
@@ -973,6 +1064,23 @@
                     </div>
                 </section>
             </aside>
+
+            <aside class="watch-column">
+                <section class="data-card">
+                    <div class="card-header">
+                        <div>
+                            <h2 class="card-title">自选代币 / 个股</h2>
+                            <p class="card-note" id="watchlist-status">等待报价</p>
+                        </div>
+                        <div class="watchlist-actions">
+                            <button type="button" class="watchlist-button" id="add-watchlist-current">添加当前</button>
+                        </div>
+                    </div>
+                    <div class="watchlist-stack" id="watchlist-items">
+                        <div class="empty-state">暂无自选</div>
+                    </div>
+                </section>
+            </aside>
         </section>
 
         <section id="us-stock-analysis" class="report-view hidden">
@@ -1108,6 +1216,7 @@
         "https://ccinvest.onrender.com"
     ];
     const REFRESH_INTERVAL_MS = 60000;
+    const WATCHLIST_STORAGE_KEY = "ccinvestWatchlist";
     const CHAIN_LABELS = {
         solana: "Solana",
         bsc: "BSC",
@@ -1136,6 +1245,14 @@
         ethereum: ["BTC", "ETH", "ARB", "LINK"],
         us_stock: ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN"]
     };
+    const DEFAULT_WATCHLIST = [
+        { chain: "ethereum", symbol: "BTC" },
+        { chain: "ethereum", symbol: "ETH" },
+        { chain: "solana", symbol: "SOL" },
+        { chain: "us_stock", symbol: "AAPL" },
+        { chain: "us_stock", symbol: "MSFT" },
+        { chain: "us_stock", symbol: "NVDA" }
+    ];
     const PUBLIC_SOURCE_POOLS = {
         cryptoPrice: ["CoinGecko", "Coinbase", "CryptoCompare", "CoinLore", "DexScreener"],
         cryptoHistory: ["Binance", "Yahoo Finance"],
@@ -1163,6 +1280,8 @@
     let currentReportType = "daily";
     let refreshTimer = null;
     let API_CANDIDATES = [];
+    let watchlistItems = [];
+    let watchlistQuotes = {};
 
     function normalizeApiBase(value) {
         const raw = String(value || "").trim();
@@ -1471,6 +1590,147 @@
         });
     }
 
+    function watchKey(item) {
+        return `${item.chain}:${String(item.symbol || "").toUpperCase()}`;
+    }
+
+    function normalizeWatchItem(item) {
+        const chain = CHAIN_LABELS[item && item.chain] ? item.chain : "ethereum";
+        const symbol = String(item && item.symbol || "").trim().toUpperCase();
+        return symbol ? { chain, symbol } : null;
+    }
+
+    function loadWatchlist() {
+        try {
+            const saved = JSON.parse(window.localStorage.getItem(WATCHLIST_STORAGE_KEY) || "[]");
+            const parsed = Array.isArray(saved) ? saved.map(normalizeWatchItem).filter(Boolean) : [];
+            watchlistItems = parsed.length ? parsed : DEFAULT_WATCHLIST.map(normalizeWatchItem).filter(Boolean);
+        } catch (_) {
+            watchlistItems = DEFAULT_WATCHLIST.map(normalizeWatchItem).filter(Boolean);
+        }
+        watchlistItems = uniqueWatchItems(watchlistItems);
+    }
+
+    function saveWatchlist() {
+        try {
+            window.localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(watchlistItems));
+        } catch (_) {}
+    }
+
+    function uniqueWatchItems(items) {
+        const seen = new Set();
+        return items.filter(item => {
+            const key = watchKey(item);
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    }
+
+    function renderWatchlist() {
+        const container = $("watchlist-items");
+        if (!container) return;
+        if (!watchlistItems.length) {
+            container.innerHTML = '<div class="empty-state">暂无自选</div>';
+            setText("watchlist-status", "暂无自选");
+            return;
+        }
+
+        container.innerHTML = watchlistItems.map(item => {
+            const key = watchKey(item);
+            const quote = watchlistQuotes[key] || {};
+            const isActive = currentChain === item.chain && normalizeSymbolForWatch(currentSymbol) === item.symbol;
+            const change = quote.change;
+            const changeClass = toNumber(change) === null ? "muted" : (isPositive(change) ? "text-green" : "text-red");
+            const status = quote.error ? quote.error : `${formatPrice(quote.price)} · ${formatPercent(change, 1)}`;
+            return `
+                <div class="watchlist-row${isActive ? " active" : ""}" data-watch-key="${escapeAttribute(key)}">
+                    <button type="button" class="watchlist-main" data-watch-select="${escapeAttribute(key)}">
+                        <div class="watch-symbol">${escapeHtml(item.symbol)}</div>
+                        <div class="watch-meta">
+                            <span>${escapeHtml(CHAIN_LABELS[item.chain] || item.chain)}</span>
+                            <span class="${changeClass}">${escapeHtml(quote.error ? "报价异常" : formatPercent(change, 1))}</span>
+                        </div>
+                        <div class="watch-price">${escapeHtml(status)}</div>
+                    </button>
+                    <button type="button" class="watch-remove" data-watch-remove="${escapeAttribute(key)}" title="移除">×</button>
+                </div>
+            `;
+        }).join("");
+
+        container.querySelectorAll("[data-watch-select]").forEach(button => {
+            button.addEventListener("click", () => selectWatchItem(button.dataset.watchSelect));
+        });
+        container.querySelectorAll("[data-watch-remove]").forEach(button => {
+            button.addEventListener("click", event => {
+                event.stopPropagation();
+                removeWatchItem(button.dataset.watchRemove);
+            });
+        });
+        setText("watchlist-status", `${watchlistItems.length} 个自选`);
+    }
+
+    function normalizeSymbolForWatch(symbol) {
+        const raw = String(symbol || "").trim().toUpperCase();
+        if (raw.endsWith("USDT")) return raw.slice(0, -4);
+        if (raw.endsWith("USD")) return raw.slice(0, -3);
+        return raw;
+    }
+
+    function addCurrentToWatchlist() {
+        const raw = $("token-input").value.trim() || currentSymbol;
+        const item = normalizeWatchItem({ chain: currentChain, symbol: normalizeSymbolForWatch(raw) });
+        if (!item) return;
+        watchlistItems = uniqueWatchItems([item, ...watchlistItems]);
+        saveWatchlist();
+        renderWatchlist();
+        loadWatchlistQuotes();
+    }
+
+    function removeWatchItem(key) {
+        watchlistItems = watchlistItems.filter(item => watchKey(item) !== key);
+        delete watchlistQuotes[key];
+        saveWatchlist();
+        renderWatchlist();
+    }
+
+    function selectWatchItem(key) {
+        const item = watchlistItems.find(candidate => watchKey(candidate) === key);
+        if (!item) return;
+        currentChain = item.chain;
+        const input = $("token-input");
+        input.value = item.symbol;
+        input.placeholder = PLACEHOLDERS[item.chain] || "输入代码";
+        setActiveChainButton(item.chain);
+        renderPopularTokens(item.chain);
+        $("stock-mode-tabs").classList.toggle("hidden", item.chain !== "us_stock");
+        showQueryView(false);
+        renderWatchlist();
+        loadTokenData();
+    }
+
+    async function loadWatchlistQuotes() {
+        if (!watchlistItems.length) return;
+        const items = [...watchlistItems];
+        await Promise.allSettled(items.map(async item => {
+            const key = watchKey(item);
+            try {
+                const assetClass = item.chain === "us_stock" ? "us_equity" : "crypto";
+                const data = await fetchJson(`/webhooks/price/${encodeURIComponent(item.symbol)}?asset_class=${assetClass}`, { timeoutMs: 12000 });
+                watchlistQuotes[key] = {
+                    price: data.price ?? data.price_usd,
+                    change: data.change_24h ?? 0,
+                    source: data.source || ""
+                };
+            } catch (error) {
+                watchlistQuotes[key] = {
+                    error: String(error.message || "不可用").replace(/^https?:\/\/[^ ]+\s*/, "")
+                };
+            }
+        }));
+        renderWatchlist();
+    }
+
     function setActiveChainButton(chain) {
         document.querySelectorAll("[data-chain]").forEach(button => {
             button.classList.toggle("active", button.dataset.chain === chain);
@@ -1487,6 +1747,7 @@
         renderPopularTokens(chain);
         $("stock-mode-tabs").classList.toggle("hidden", chain !== "us_stock");
         showQueryView(false);
+        renderWatchlist();
         loadTokenData();
     }
 
@@ -1533,6 +1794,7 @@
 
         const symbol = rawSymbol.toUpperCase();
         currentSymbol = normalizeSymbolForHistory(symbol);
+        renderWatchlist();
         setStatus("loading", `加载 ${symbol}`);
 
         try {
@@ -1995,12 +2257,14 @@
         $("view-query").addEventListener("click", () => showQueryView(true));
         $("view-report").addEventListener("click", showAnalysisView);
         $("refresh-report").addEventListener("click", loadAnalysisReport);
+        $("add-watchlist-current").addEventListener("click", addCurrentToWatchlist);
     }
 
     function startRefreshTimer() {
         if (refreshTimer) window.clearInterval(refreshTimer);
         refreshTimer = window.setInterval(() => {
             loadMarketOverview();
+            loadWatchlistQuotes();
             if (!$("main-content").classList.contains("hidden")) {
                 loadTokenData();
             }
@@ -2010,11 +2274,14 @@
     window.addEventListener("load", async () => {
         setText("api-origin", "API: 检测中");
         bindEvents();
+        loadWatchlist();
         setActiveChainButton(currentChain);
         renderPopularTokens(currentChain);
+        renderWatchlist();
         const apiReady = await initializeApiBase();
         if (!apiReady) return;
         loadMarketOverview();
+        loadWatchlistQuotes();
         loadTokenData();
         startRefreshTimer();
     });
