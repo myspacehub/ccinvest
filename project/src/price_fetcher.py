@@ -32,6 +32,20 @@ COINGECKO_IDS = {
     "HYPE": "hyperliquid"
 }
 
+COINPAPRIKA_IDS = {
+    "BTC": "btc-bitcoin",
+    "ETH": "eth-ethereum",
+    "SOL": "sol-solana",
+    "BNB": "bnb-binance-coin",
+    "XRP": "xrp-xrp",
+    "ADA": "ada-cardano",
+    "DOGE": "doge-dogecoin",
+    "DOT": "dot-polkadot",
+    "LINK": "link-chainlink",
+    "AVAX": "avax-avalanche",
+    "HYPE": "hype-hyperliquid",
+}
+
 COINBASE_TICKERS = {
     "BTC": "BTC", "ETH": "ETH", "SOL": "SOL",
     "DOGE": "DOGE", "ADA": "ADA", "XRP": "XRP",
@@ -90,6 +104,44 @@ def resolve_coingecko_id(symbol: str) -> Optional[str]:
             return coin_id
     except Exception as e:
         logger.debug(f"CoinGecko ID 解析失败 {normalized}: {e}")
+    return None
+
+def resolve_coinpaprika_id(symbol: str) -> Optional[str]:
+    """Resolve a ticker to CoinPaprika id."""
+    normalized = normalize_crypto_symbol(symbol)
+    if not normalized:
+        return None
+
+    mapped = COINPAPRIKA_IDS.get(normalized)
+    if mapped:
+        return mapped
+
+    cache_key = f"paprika_id_{normalized}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached.get("id")
+
+    try:
+        r = requests.get(
+            "https://api.coinpaprika.com/v1/search/",
+            params={"q": normalized, "c": "currencies", "limit": 10},
+            timeout=8
+        )
+        if not r.ok:
+            return None
+        currencies = r.json().get("currencies", [])
+        exact_symbol = [
+            item for item in currencies
+            if str(item.get("symbol", "")).upper() == normalized and item.get("is_active", True)
+        ]
+        candidates = exact_symbol or currencies
+        candidates.sort(key=lambda item: item.get("rank") or 10**9)
+        coin_id = candidates[0].get("id") if candidates else None
+        if coin_id:
+            set_cached(cache_key, {"id": coin_id})
+            return coin_id
+    except Exception as e:
+        logger.debug(f"CoinPaprika ID 解析失败 {normalized}: {e}")
     return None
 
 def fetch_cryptocompare(symbol: str) -> Optional[Dict]:
@@ -234,6 +286,54 @@ def fetch_cryptocompare_market(symbol: str) -> Optional[Dict]:
         "image": data.get("image", "")
     }
 
+def fetch_coinpaprika_market(symbol: str) -> Optional[Dict]:
+    """CoinPaprika market stats and latest OHLC fallback."""
+    coin_id = resolve_coinpaprika_id(symbol)
+    if not coin_id:
+        return None
+
+    market = {}
+    try:
+        ticker = requests.get(f"https://api.coinpaprika.com/v1/tickers/{coin_id}", timeout=8)
+        if ticker.ok:
+            data = ticker.json()
+            quote = data.get("quotes", {}).get("USD", {})
+            market.update({
+                "market_cap": quote.get("market_cap") or 0,
+                "market_cap_rank": data.get("rank") or 0,
+                "total_volume": quote.get("volume_24h") or 0,
+                "name": data.get("name", symbol),
+            })
+    except Exception as e:
+        logger.debug(f"CoinPaprika ticker 失败 {symbol}: {e}")
+
+    try:
+        ohlc = requests.get(f"https://api.coinpaprika.com/v1/coins/{coin_id}/ohlcv/latest/", timeout=8)
+        if ohlc.ok:
+            rows = ohlc.json()
+            if rows:
+                latest = rows[0]
+                market.update({
+                    "high_24h": latest.get("high") or 0,
+                    "low_24h": latest.get("low") or 0,
+                    "total_volume": market.get("total_volume") or latest.get("volume") or 0,
+                    "market_cap": market.get("market_cap") or latest.get("market_cap") or 0,
+                })
+    except Exception as e:
+        logger.debug(f"CoinPaprika OHLC 失败 {symbol}: {e}")
+
+    return market or None
+
+def merge_market_data(primary: Dict, fallback: Dict) -> Dict:
+    merged = dict(primary or {})
+    for key, value in (fallback or {}).items():
+        if key in {"market_cap", "market_cap_rank", "total_volume", "high_24h", "low_24h"}:
+            if not merged.get(key):
+                merged[key] = value
+        elif key in {"name", "image"} and not merged.get(key):
+            merged[key] = value
+    return merged
+
 def fetch_coinbase(symbol: str) -> Optional[Dict]:
     """Coinbase API"""
     ticker = COINBASE_TICKERS.get(symbol.upper())
@@ -334,16 +434,21 @@ def get_market_data_with_fallback(symbol: str) -> Dict:
     if cached:
         return cached
 
-    result = None
+    result: Dict = {}
 
     cg_data = fetch_coingecko_market(symbol)
     if cg_data:
-        result = cg_data
+        result = merge_market_data(result, cg_data)
 
-    if not result:
+    if not all(result.get(key) for key in ("market_cap", "total_volume", "high_24h", "low_24h")):
+        cp_data = fetch_coinpaprika_market(symbol)
+        if cp_data:
+            result = merge_market_data(result, cp_data)
+
+    if not all(result.get(key) for key in ("market_cap", "total_volume", "high_24h", "low_24h")):
         cc_data = fetch_cryptocompare_market(symbol)
         if cc_data:
-            result = cc_data
+            result = merge_market_data(result, cc_data)
 
     if result:
         set_cached(cache_key, result)

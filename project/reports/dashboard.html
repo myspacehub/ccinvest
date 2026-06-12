@@ -26,7 +26,8 @@
             --blue: #64a8ff;
             --blue-soft: rgba(100, 168, 255, 0.16);
             --purple: #b18cff;
-            --shadow: 0 18px 48px rgba(0, 0, 0, 0.26);
+            --shadow: 0 16px 34px rgba(0, 0, 0, 0.22);
+            --shadow-soft: 0 10px 22px rgba(0, 0, 0, 0.16);
             --radius: 8px;
         }
 
@@ -66,7 +67,7 @@
         .app-shell {
             width: min(1420px, calc(100% - 32px));
             margin: 0 auto;
-            padding: 24px 0 40px;
+            padding: 24px 0 44px;
         }
 
         .topbar {
@@ -175,7 +176,11 @@
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 12px;
-            margin-bottom: 14px;
+            margin-bottom: 16px;
+            padding: 12px;
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius);
+            background: rgba(9, 14, 15, 0.72);
         }
 
         .market-card,
@@ -190,12 +195,27 @@
         }
 
         .market-card {
+            position: relative;
             display: flex;
             align-items: center;
             justify-content: space-between;
             min-height: 92px;
             padding: 16px;
             overflow: hidden;
+            box-shadow: var(--shadow-soft);
+        }
+
+        .market-card::before,
+        .metric-card::before,
+        .data-card::before,
+        .report-card::before,
+        .control-panel::before {
+            content: "";
+            position: absolute;
+            inset: 0 0 auto;
+            height: 3px;
+            background: linear-gradient(90deg, var(--green), var(--blue));
+            opacity: 0.72;
         }
 
         .market-name,
@@ -225,8 +245,11 @@
         }
 
         .control-panel {
-            margin-bottom: 14px;
-            padding: 16px;
+            position: relative;
+            margin-bottom: 16px;
+            padding: 18px;
+            border-color: #35494e;
+            background: linear-gradient(180deg, rgba(20, 31, 33, 0.98), rgba(12, 18, 20, 0.98));
         }
 
         .control-grid {
@@ -345,7 +368,7 @@
         .content-grid {
             display: grid;
             grid-template-columns: minmax(0, 1.48fr) minmax(320px, 0.78fr) minmax(260px, 0.58fr);
-            gap: 14px;
+            gap: 16px;
             align-items: start;
         }
 
@@ -354,7 +377,7 @@
         .watch-column,
         .report-view {
             display: grid;
-            gap: 14px;
+            gap: 16px;
         }
 
         .metrics-grid {
@@ -364,8 +387,12 @@
         }
 
         .metric-card {
+            position: relative;
             min-height: 96px;
             padding: 16px;
+            border-color: var(--border-soft);
+            background: linear-gradient(180deg, rgba(20, 29, 31, 0.98), rgba(13, 19, 20, 0.98));
+            box-shadow: var(--shadow-soft);
         }
 
         .metric-value {
@@ -377,7 +404,18 @@
 
         .data-card,
         .report-card {
+            position: relative;
             padding: 18px;
+            overflow: hidden;
+        }
+
+        .data-card > *,
+        .report-card > *,
+        .control-panel > *,
+        .metric-card > *,
+        .market-card > * {
+            position: relative;
+            z-index: 1;
         }
 
         .card-header {
@@ -434,6 +472,11 @@
             gap: 10px;
         }
 
+        #token-info-card {
+            border-color: #385057;
+            background: linear-gradient(180deg, rgba(22, 34, 36, 0.98), rgba(13, 20, 21, 0.98));
+        }
+
         .source-panel {
             display: grid;
             gap: 10px;
@@ -441,7 +484,7 @@
             padding: 12px;
             border: 1px solid var(--border-soft);
             border-radius: var(--radius);
-            background: rgba(255, 255, 255, 0.018);
+            background: rgba(255, 255, 255, 0.028);
         }
 
         .source-list {
@@ -474,7 +517,7 @@
             padding: 12px;
             border: 1px solid var(--border-soft);
             border-radius: var(--radius);
-            background: rgba(255, 255, 255, 0.018);
+            background: rgba(255, 255, 255, 0.028);
         }
 
         .detail-value {
@@ -515,7 +558,7 @@
             padding: 12px;
             border: 1px solid var(--border-soft);
             border-radius: var(--radius);
-            background: rgba(255, 255, 255, 0.018);
+            background: rgba(255, 255, 255, 0.028);
         }
 
         .signal-number {
