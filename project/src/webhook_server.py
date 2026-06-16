@@ -226,12 +226,23 @@ def get_simulator():
     load_dotenv()
     import os
     db_url = os.getenv("DATABASE_URL", "sqlite:///data/ccinvest.db")
+    ensure_sqlite_parent_dir(db_url)
     return SimulatorEngine(database_url=db_url, trading_mode="paper", initial_balance=10000.0)
 
 def get_risk_manager():
     """获取风控管理器"""
     from src.risk import RiskManager
     return RiskManager()
+
+
+def ensure_sqlite_parent_dir(db_url: str) -> None:
+    """Create parent directory for sqlite database URLs used on ephemeral hosts."""
+    if not db_url or not db_url.startswith("sqlite:///"):
+        return
+    db_path = db_url.replace("sqlite:///", "", 1)
+    if db_path == ":memory:":
+        return
+    Path(db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
 
 # =====================================================
 # Webhook 路由
@@ -432,7 +443,28 @@ async def webhook_account(
         
     except Exception as e:
         logger.error(f"账户查询失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "account": {
+                "account_id": account_id,
+                "balance": "$0.00",
+                "initial": "$0.00",
+                "pnl": "$0.00",
+                "pnl_pct": "0.00%",
+                "trades": 0,
+                "win_rate": "N/A"
+            },
+            "positions": [],
+            "risk_report": {
+                "timestamp": datetime.utcnow().isoformat(),
+                "account_id": account_id,
+                "risk_level": "unknown",
+                "status": "账户数据库暂不可用，已返回默认账户视图",
+                "metrics": {},
+                "limits": {}
+            },
+            "warning": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
 
 @app.get("/webhooks/positions", tags=["持仓"])
 async def webhook_positions(
@@ -1346,44 +1378,46 @@ def fetch_coingecko_ohlc_history(symbol: str, interval: str, limit: int) -> List
         return []
 
 
-async def load_history_rows(symbol: str, interval: str, limit: int) -> Dict:
+async def load_history_rows(symbol: str, interval: str, limit: int, asset_class: str = "auto") -> Dict:
     """Load OHLC rows from Binance first, Yahoo Finance as fallback."""
     from src.collector import DataCollector
     
     normalized_symbol = symbol.upper()
-    collector = DataCollector()
+    resolved_asset_class = infer_asset_class(normalized_symbol, asset_class)
     data = []
     validation = None
     
-    try:
-        data, validation = collector.fetch_ohlc(
-            symbol=normalized_symbol,
-            interval=interval,
-            limit=limit
-        )
-        if data:
-            collector.save_ohlc_data(data)
-            return {
-                "symbol": normalized_symbol,
-                "interval": interval,
-                "count": len(data),
-                "validation": validation.to_dict() if validation else None,
-                "data": [
-                    {
-                        "time": item["open_time"].isoformat(),
-                        "open": item["open_price"],
-                        "high": item["high_price"],
-                        "low": item["low_price"],
-                        "close": item["close_price"],
-                        "volume": item["volume"],
-                    }
-                    for item in data
-                ],
-                "source": "binance",
-                "timestamp": datetime.utcnow().isoformat()
-            }
-    except Exception as e:
-        logger.warning(f"Binance 获取 K 线失败: {e}")
+    if resolved_asset_class != "us_equity":
+        collector = DataCollector()
+        try:
+            data, validation = collector.fetch_ohlc(
+                symbol=normalized_symbol,
+                interval=interval,
+                limit=limit
+            )
+            if data:
+                collector.save_ohlc_data(data)
+                return {
+                    "symbol": normalized_symbol,
+                    "interval": interval,
+                    "count": len(data),
+                    "validation": validation.to_dict() if validation else None,
+                    "data": [
+                        {
+                            "time": item["open_time"].isoformat(),
+                            "open": item["open_price"],
+                            "high": item["high_price"],
+                            "low": item["low_price"],
+                            "close": item["close_price"],
+                            "volume": item["volume"],
+                        }
+                        for item in data
+                    ],
+                    "source": "binance",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+        except Exception as e:
+            logger.warning(f"Binance 获取 K 线失败: {e}")
     
     yahoo_data = fetch_yahoo_history(normalized_symbol, interval, limit)
     if not yahoo_data:
@@ -1432,7 +1466,7 @@ async def load_history_rows(symbol: str, interval: str, limit: int) -> Dict:
             "quality": "good",
             "score": 80,
             "issues": [],
-            "warnings": ["Binance 不可用，已切换到 Yahoo Finance"]
+            "warnings": ["已使用 Yahoo Finance"]
         },
         "data": yahoo_data,
         "source": "yahoo_finance",
