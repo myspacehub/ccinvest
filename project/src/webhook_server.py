@@ -8,7 +8,7 @@ import json
 import hmac
 import hashlib
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from functools import wraps
 from pathlib import Path
@@ -767,7 +767,11 @@ async def webhook_price(symbol: str, asset_class: str = "auto"):
     if symbol.upper() in yf_map:
         try:
             ticker = yf_map[symbol.upper()]
-            r = req.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=1d", timeout=10)
+            r = req.get(
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=1d",
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=10
+            )
             if r.ok:
                 d = r.json()
                 result = d.get("chart", {}).get("result", [])
@@ -779,8 +783,32 @@ async def webhook_price(symbol: str, asset_class: str = "auto"):
         except Exception as e:
             logger.debug(f"Yahoo 失败: {e}")
     elif resolved_asset_class == "us_equity":
+        equity_source = "yahoo_finance"
+        nasdaq_quote = fetch_nasdaq_equity_quote(symbol)
+        if nasdaq_quote:
+            prices["yahoo"] = nasdaq_quote["price"]
+            equity_source = nasdaq_quote["source"]
+            market_data.update({
+                "name": nasdaq_quote.get("name") or symbol,
+                "symbol": nasdaq_quote.get("symbol") or symbol,
+                "total_volume": nasdaq_quote.get("total_volume", 0),
+                "high_24h": nasdaq_quote.get("high_24h", 0),
+                "low_24h": nasdaq_quote.get("low_24h", 0),
+                "change_24h": nasdaq_quote.get("change_24h", 0),
+            })
+            sources_info.append({
+                "source": "nasdaq_equity",
+                "price": nasdaq_quote["price"],
+                "change_24h": nasdaq_quote.get("change_24h", 0),
+                "quote_time": nasdaq_quote.get("quote_time"),
+            })
+
         try:
-            r = req.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=5d", timeout=10)
+            r = req.get(
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=5d&includePrePost=true",
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=10
+            )
             if r.ok:
                 d = r.json()
                 result = d.get("chart", {}).get("result", [])
@@ -798,15 +826,16 @@ async def webhook_price(symbol: str, asset_class: str = "auto"):
                             previous_close = closes[-2]
                         previous_close = previous_close or p
                         c = ((p - previous_close) / previous_close * 100) if previous_close else 0
-                        prices["yahoo"] = float(p)
-                        market_data.update({
-                            "name": meta.get("longName") or meta.get("shortName") or symbol,
-                            "symbol": symbol,
-                            "total_volume": meta.get("regularMarketVolume", 0) or (volumes[-1] if volumes else 0),
-                            "high_24h": meta.get("regularMarketDayHigh", 0) or (highs[-1] if highs else 0),
-                            "low_24h": meta.get("regularMarketDayLow", 0) or (lows[-1] if lows else 0),
-                            "change_24h": c,
-                        })
+                        if not nasdaq_quote:
+                            prices["yahoo"] = float(p)
+                            market_data.update({
+                                "name": meta.get("longName") or meta.get("shortName") or symbol,
+                                "symbol": symbol,
+                                "total_volume": meta.get("regularMarketVolume", 0) or (volumes[-1] if volumes else 0),
+                                "high_24h": meta.get("regularMarketDayHigh", 0) or (highs[-1] if highs else 0),
+                                "low_24h": meta.get("regularMarketDayLow", 0) or (lows[-1] if lows else 0),
+                                "change_24h": c,
+                            })
                         sources_info.append({"source": "yahoo_equity", "price": float(p), "change_24h": c})
         except Exception as e:
             logger.debug(f"Yahoo equity 失败: {e}")
@@ -841,7 +870,7 @@ async def webhook_price(symbol: str, asset_class: str = "auto"):
             "price_diff_pct": 0,
             "is_consistent": True,
             "sources": sources_info,
-            "source": "yahoo_finance",
+            "source": equity_source,
             "is_contract": False,
             "market_cap": market_data.get("market_cap", 0),
             "market_cap_rank": market_data.get("market_cap_rank", 0),
@@ -1091,6 +1120,11 @@ async def webhook_history(symbol: str, interval: str = "1d", limit: int = 365, a
         if not data:
             yahoo_data = fetch_yahoo_history(normalized_symbol, interval, limit)
             if yahoo_data:
+                yahoo_source = (
+                    "yahoo_finance_nasdaq"
+                    if resolved_class == "us_equity" and interval == "1d"
+                    else "yahoo_finance"
+                )
                 return {
                     "symbol": normalized_symbol,
                     "interval": interval,
@@ -1100,10 +1134,10 @@ async def webhook_history(symbol: str, interval: str = "1d", limit: int = 365, a
                         "quality": "good",
                         "score": 80,
                         "issues": [],
-                        "warnings": ["Binance 不可用，已切换到 Yahoo Finance"]
+                        "warnings": [f"Binance 不可用，已切换到 {yahoo_source}"]
                     },
                     "data": yahoo_data,
-                    "source": "yahoo_finance",
+                    "source": yahoo_source,
                     "timestamp": datetime.utcnow().isoformat()
                 }
             cryptocompare_data = fetch_cryptocompare_history(normalized_symbol, interval, limit)
@@ -1192,11 +1226,12 @@ def fetch_yahoo_history(symbol: str, interval: str, limit: int) -> List[Dict[str
         "1M": ("1mo", "10y"),
     }
     yahoo_interval, range_value = interval_map[interval]
+    is_us_equity = not yahoo_symbol.endswith("-USD")
     
     try:
         response = requests.get(
             f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}",
-            params={"interval": yahoo_interval, "range": range_value},
+            params={"interval": yahoo_interval, "range": range_value, "includePrePost": "true"},
             headers={"User-Agent": "Mozilla/5.0"},
             timeout=5
         )
@@ -1234,10 +1269,163 @@ def fetch_yahoo_history(symbol: str, interval: str, limit: int) -> List[Dict[str
             except (IndexError, TypeError, ValueError):
                 continue
         
+        if is_us_equity and interval == "1d":
+            rows = merge_latest_equity_history(rows, fetch_nasdaq_equity_history(symbol, limit), limit)
         return rows[-limit:]
     except Exception as e:
         logger.warning(f"Yahoo Finance 历史数据失败: {e}")
+        if is_us_equity and interval == "1d":
+            return fetch_nasdaq_equity_history(symbol, limit)
         return []
+
+
+def parse_market_number(value: Any) -> Optional[float]:
+    """Parse public market API values like '$1,234.56' or '+0.21%'."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    if not text or text.upper() in {"N/A", "NA", "--"}:
+        return None
+    text = text.replace("$", "").replace(",", "").replace("%", "").replace("+", "")
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def fetch_nasdaq_equity_history(symbol: str, limit: int) -> List[Dict[str, float]]:
+    """Fetch daily US equity OHLCV from Nasdaq when Yahoo's latest candle is incomplete."""
+    import requests
+
+    ticker = symbol.upper().replace(".", "-")
+    today = datetime.utcnow().date()
+    lookback_days = max(30, min(2200, limit * 3 + 14))
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json, text/plain, */*",
+        "Origin": "https://www.nasdaq.com",
+        "Referer": "https://www.nasdaq.com/",
+    }
+
+    try:
+        response = requests.get(
+            f"https://api.nasdaq.com/api/quote/{ticker}/historical",
+            params={
+                "assetclass": "stocks",
+                "fromdate": (today - timedelta(days=lookback_days)).isoformat(),
+                "todate": today.isoformat(),
+                "limit": str(max(30, min(9999, limit * 3))),
+            },
+            headers=headers,
+            timeout=10,
+        )
+        response.raise_for_status()
+        rows_payload = (
+            response.json()
+            .get("data", {})
+            .get("tradesTable", {})
+            .get("rows", [])
+        )
+
+        rows = []
+        for item in rows_payload:
+            try:
+                close_price = parse_market_number(item.get("close"))
+                if close_price is None:
+                    continue
+                row_date = datetime.strptime(item.get("date", ""), "%m/%d/%Y")
+                open_price = parse_market_number(item.get("open")) or close_price
+                high_price = parse_market_number(item.get("high")) or max(open_price, close_price)
+                low_price = parse_market_number(item.get("low")) or min(open_price, close_price)
+                rows.append({
+                    "time": row_date.isoformat(),
+                    "open": float(open_price),
+                    "high": float(high_price),
+                    "low": float(low_price),
+                    "close": float(close_price),
+                    "volume": float(parse_market_number(item.get("volume")) or 0),
+                })
+            except (TypeError, ValueError):
+                continue
+
+        rows.sort(key=lambda row: row["time"])
+        return rows[-limit:]
+    except Exception as e:
+        logger.warning(f"Nasdaq 历史数据失败 {ticker}: {e}")
+        return []
+
+
+def merge_latest_equity_history(
+    primary_rows: List[Dict[str, float]],
+    fallback_rows: List[Dict[str, float]],
+    limit: int
+) -> List[Dict[str, float]]:
+    """Merge a secondary equity source without disturbing older Yahoo rows."""
+    merged = {row["time"][:10]: row for row in primary_rows if row.get("time")}
+    for row in fallback_rows:
+        row_date = row.get("time", "")[:10]
+        if not row_date:
+            continue
+        current = merged.get(row_date)
+        if current is None or not current.get("close"):
+            merged[row_date] = row
+    rows = sorted(merged.values(), key=lambda item: item["time"])
+    return rows[-limit:]
+
+
+def fetch_nasdaq_equity_quote(symbol: str) -> Optional[Dict[str, Any]]:
+    """Fetch latest US equity quote snapshot from Nasdaq's public endpoint."""
+    import requests
+
+    ticker = symbol.upper().replace(".", "-")
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json, text/plain, */*",
+        "Origin": "https://www.nasdaq.com",
+        "Referer": "https://www.nasdaq.com/",
+    }
+
+    try:
+        response = requests.get(
+            f"https://api.nasdaq.com/api/quote/{ticker}/info",
+            params={"assetclass": "stocks"},
+            headers=headers,
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json().get("data") or {}
+        primary = data.get("primaryData") or {}
+        price = parse_market_number(primary.get("lastSalePrice"))
+        history = fetch_nasdaq_equity_history(symbol, 2)
+        latest = history[-1] if history else {}
+        previous = history[-2] if len(history) >= 2 else {}
+
+        if price is None:
+            price = latest.get("close")
+        if price is None:
+            return None
+
+        change_24h = parse_market_number(primary.get("percentageChange"))
+        previous_close = previous.get("close") or latest.get("close")
+        if change_24h is None and previous_close:
+            change_24h = ((float(price) - float(previous_close)) / float(previous_close) * 100)
+
+        return {
+            "name": data.get("companyName") or symbol.upper(),
+            "symbol": data.get("symbol") or symbol.upper(),
+            "price": float(price),
+            "change_24h": float(change_24h or 0),
+            "total_volume": latest.get("volume") or parse_market_number(primary.get("volume")) or 0,
+            "high_24h": latest.get("high") or 0,
+            "low_24h": latest.get("low") or 0,
+            "quote_time": primary.get("lastTradeTimestamp"),
+            "source": "nasdaq",
+        }
+    except Exception as e:
+        logger.warning(f"Nasdaq 报价数据失败 {ticker}: {e}")
+        return None
 
 
 def fetch_cryptocompare_history(symbol: str, interval: str, limit: int) -> List[Dict[str, float]]:
@@ -1466,10 +1654,18 @@ async def load_history_rows(symbol: str, interval: str, limit: int, asset_class:
             "quality": "good",
             "score": 80,
             "issues": [],
-            "warnings": ["已使用 Yahoo Finance"]
+            "warnings": [
+                "已使用 Yahoo Finance + Nasdaq"
+                if resolved_asset_class == "us_equity" and interval == "1d"
+                else "已使用 Yahoo Finance"
+            ]
         },
         "data": yahoo_data,
-        "source": "yahoo_finance",
+        "source": (
+            "yahoo_finance_nasdaq"
+            if resolved_asset_class == "us_equity" and interval == "1d"
+            else "yahoo_finance"
+        ),
         "timestamp": datetime.utcnow().isoformat()
     }
 
