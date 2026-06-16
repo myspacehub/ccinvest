@@ -1976,7 +1976,7 @@ def _fetch_yahoo_chart_snapshot(symbol: str, range_value: str = "3mo") -> Option
             f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
             params={"interval": "1d", "range": range_value},
             headers={"User-Agent": "Mozilla/5.0"},
-            timeout=4,
+            timeout=2.5,
         )
         if not response.ok:
             logger.debug(f"Yahoo chart 请求失败 [{symbol}]: {response.status_code}")
@@ -2018,7 +2018,7 @@ def _fetch_stooq_chart_snapshot(symbol: str) -> Optional[Dict[str, Any]]:
             "https://stooq.com/q/d/l/",
             params={"s": f"{symbol.lower()}.us", "i": "d"},
             headers={"User-Agent": "Mozilla/5.0"},
-            timeout=4,
+            timeout=2.5,
         )
         if not response.ok or "Date,Open,High,Low,Close,Volume" not in response.text:
             logger.debug(f"Stooq chart 请求失败 [{symbol}]: {response.status_code}")
@@ -2054,22 +2054,24 @@ def _fetch_compact_snapshots(symbols: List[str], max_workers: int = 8) -> List[D
     from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 
     snapshots: List[Dict[str, Any]] = []
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_fetch_public_chart_snapshot, symbol): symbol for symbol in symbols}
-        try:
-            completed = as_completed(futures, timeout=9)
-            for future in completed:
-                try:
-                    snapshot = future.result(timeout=0)
-                except Exception as exc:
-                    logger.debug(f"快速报告快照任务失败 [{futures[future]}]: {exc}")
-                    continue
-                if snapshot:
-                    snapshots.append(snapshot)
-        except TimeoutError:
-            logger.warning("快速报告公开行情源响应超时，返回已获取的数据")
-            for future in futures:
-                future.cancel()
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    futures = {executor.submit(_fetch_public_chart_snapshot, symbol): symbol for symbol in symbols}
+    try:
+        completed = as_completed(futures, timeout=6)
+        for future in completed:
+            try:
+                snapshot = future.result(timeout=0)
+            except Exception as exc:
+                logger.debug(f"快速报告快照任务失败 [{futures[future]}]: {exc}")
+                continue
+            if snapshot:
+                snapshots.append(snapshot)
+    except TimeoutError:
+        logger.warning("快速报告公开行情源响应超时，返回已获取的数据")
+        for future in futures:
+            future.cancel()
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
     return snapshots
 
 
@@ -2119,7 +2121,7 @@ def _fetch_nasdaq_earnings_for_date(target_date: Any) -> List[Dict[str, Any]]:
                 "Origin": "https://www.nasdaq.com",
                 "Referer": "https://www.nasdaq.com/",
             },
-            timeout=3,
+            timeout=2.5,
         )
         if not response.ok:
             logger.debug(f"Nasdaq 财报日历请求失败 [{target_date}]: {response.status_code}")
@@ -2158,18 +2160,20 @@ def _fetch_compact_earnings_calendar() -> Dict[str, List[Dict[str, Any]]]:
     target_dates = [today + timedelta(days=offset) for offset in range(15)]
     events: List[Dict[str, Any]] = []
 
-    with ThreadPoolExecutor(max_workers=len(target_dates)) as executor:
-        futures = {executor.submit(_fetch_nasdaq_earnings_for_date, day): day for day in target_dates}
-        try:
-            for future in as_completed(futures, timeout=7):
-                try:
-                    events.extend(future.result(timeout=0))
-                except Exception as exc:
-                    logger.debug(f"快速财报日历任务失败 [{futures[future]}]: {exc}")
-        except TimeoutError:
-            logger.warning("快速财报日历响应超时，返回已获取的数据")
-            for future in futures:
-                future.cancel()
+    executor = ThreadPoolExecutor(max_workers=len(target_dates))
+    futures = {executor.submit(_fetch_nasdaq_earnings_for_date, day): day for day in target_dates}
+    try:
+        for future in as_completed(futures, timeout=5):
+            try:
+                events.extend(future.result(timeout=0))
+            except Exception as exc:
+                logger.debug(f"快速财报日历任务失败 [{futures[future]}]: {exc}")
+    except TimeoutError:
+        logger.warning("快速财报日历响应超时，返回已获取的数据")
+        for future in futures:
+            future.cancel()
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
     for event in events:
         event_date = datetime.strptime(event["earnings_date"], "%Y-%m-%d").date()
