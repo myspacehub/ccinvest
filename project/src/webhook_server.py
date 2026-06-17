@@ -676,6 +676,54 @@ async def webhook_price(symbol: str, asset_class: str = "auto"):
     if not cg_id and HAS_PRICE_FETCHER and resolve_coingecko_id and resolved_asset_class != "us_equity":
         cg_id = resolve_coingecko_id(base_symbol)
 
+    if cg_id and resolved_asset_class != "us_equity":
+        try:
+            r = req.get(
+                "https://api.coingecko.com/api/v3/coins/markets",
+                params={
+                    "vs_currency": "usd",
+                    "ids": cg_id,
+                    "order": "market_cap_desc",
+                    "per_page": 1,
+                    "page": 1,
+                    "sparkline": False,
+                },
+                timeout=5,
+            )
+            if r.ok:
+                coins = r.json()
+                if coins:
+                    coin = coins[0]
+                    price = float(coin.get("current_price") or 0)
+                    if price > 0:
+                        result = {
+                            "symbol": (coin.get("symbol") or base_symbol).upper(),
+                            "price": price,
+                            "change_24h": coin.get("price_change_percentage_24h") or 0,
+                            "price_usd": price,
+                            "source": "coingecko",
+                            "is_contract": False,
+                            "market_cap": coin.get("market_cap") or 0,
+                            "market_cap_rank": coin.get("market_cap_rank") or 0,
+                            "total_volume": coin.get("total_volume") or 0,
+                            "high_24h": coin.get("high_24h") or 0,
+                            "low_24h": coin.get("low_24h") or 0,
+                            "name": coin.get("name") or symbol,
+                            "image": coin.get("image") or "",
+                            "sources": [{
+                                "source": "coingecko_markets",
+                                "price": price,
+                                "change_24h": coin.get("price_change_percentage_24h") or 0,
+                            }],
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+                        _cache[_price_cache_key] = result.copy()
+                        _cache[_price_cache_key]["_timestamp"] = _now
+                        webhook_price._cache = _cache
+                        return result
+        except Exception as e:
+            logger.debug(f"CoinGecko markets 快速价格失败 [{symbol}]: {e}")
+
     # 使用优化的价格获取模块
     if HAS_PRICE_FETCHER and resolved_asset_class != "us_equity":
         price_data = get_price_with_fallback(base_symbol)
