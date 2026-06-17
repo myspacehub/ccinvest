@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from functools import wraps
 from pathlib import Path
+from threading import Lock
 
 from fastapi import FastAPI, HTTPException, Request, Depends, Header, Body
 from fastapi.responses import JSONResponse
@@ -803,30 +804,30 @@ async def webhook_price(symbol: str, asset_class: str = "auto"):
                 "quote_time": nasdaq_quote.get("quote_time"),
             })
 
-        try:
-            r = req.get(
-                f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=5d&includePrePost=true",
-                headers={"User-Agent": "Mozilla/5.0"},
-                timeout=10
-            )
-            if r.ok:
-                d = r.json()
-                result = d.get("chart", {}).get("result", [])
-                if result:
-                    meta = result[0].get("meta", {})
-                    quote = result[0].get("indicators", {}).get("quote", [{}])[0]
-                    closes = [v for v in quote.get("close", []) if v is not None]
-                    highs = [v for v in quote.get("high", []) if v is not None]
-                    lows = [v for v in quote.get("low", []) if v is not None]
-                    volumes = [v for v in quote.get("volume", []) if v is not None]
-                    p = meta.get("regularMarketPrice") or (closes[-1] if closes else None)
-                    if p:
-                        previous_close = meta.get("previousClose") or meta.get("chartPreviousClose")
-                        if not previous_close and len(closes) >= 2:
-                            previous_close = closes[-2]
-                        previous_close = previous_close or p
-                        c = ((p - previous_close) / previous_close * 100) if previous_close else 0
-                        if not nasdaq_quote:
+        if not nasdaq_quote:
+            try:
+                r = req.get(
+                    f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=5d&includePrePost=true",
+                    headers={"User-Agent": "Mozilla/5.0"},
+                    timeout=5
+                )
+                if r.ok:
+                    d = r.json()
+                    result = d.get("chart", {}).get("result", [])
+                    if result:
+                        meta = result[0].get("meta", {})
+                        quote = result[0].get("indicators", {}).get("quote", [{}])[0]
+                        closes = [v for v in quote.get("close", []) if v is not None]
+                        highs = [v for v in quote.get("high", []) if v is not None]
+                        lows = [v for v in quote.get("low", []) if v is not None]
+                        volumes = [v for v in quote.get("volume", []) if v is not None]
+                        p = meta.get("regularMarketPrice") or (closes[-1] if closes else None)
+                        if p:
+                            previous_close = meta.get("previousClose") or meta.get("chartPreviousClose")
+                            if not previous_close and len(closes) >= 2:
+                                previous_close = closes[-2]
+                            previous_close = previous_close or p
+                            c = ((p - previous_close) / previous_close * 100) if previous_close else 0
                             prices["yahoo"] = float(p)
                             market_data.update({
                                 "name": meta.get("longName") or meta.get("shortName") or symbol,
@@ -836,9 +837,9 @@ async def webhook_price(symbol: str, asset_class: str = "auto"):
                                 "low_24h": meta.get("regularMarketDayLow", 0) or (lows[-1] if lows else 0),
                                 "change_24h": c,
                             })
-                        sources_info.append({"source": "yahoo_equity", "price": float(p), "change_24h": c})
-        except Exception as e:
-            logger.debug(f"Yahoo equity 失败: {e}")
+                            sources_info.append({"source": "yahoo_equity", "price": float(p), "change_24h": c})
+            except Exception as e:
+                logger.debug(f"Yahoo equity 失败: {e}")
         
         if not prices:
             rows = fetch_yahoo_history(symbol, "1d", 30)
@@ -1295,7 +1296,7 @@ def parse_market_number(value: Any) -> Optional[float]:
         return None
 
 
-def fetch_nasdaq_equity_history(symbol: str, limit: int) -> List[Dict[str, float]]:
+def fetch_nasdaq_equity_history(symbol: str, limit: int, timeout: float = 10) -> List[Dict[str, float]]:
     """Fetch daily US equity OHLCV from Nasdaq when Yahoo's latest candle is incomplete."""
     import requests
 
@@ -1319,7 +1320,7 @@ def fetch_nasdaq_equity_history(symbol: str, limit: int) -> List[Dict[str, float
                 "limit": str(max(30, min(9999, limit * 3))),
             },
             headers=headers,
-            timeout=10,
+            timeout=timeout,
         )
         response.raise_for_status()
         rows_payload = (
@@ -1392,13 +1393,13 @@ def fetch_nasdaq_equity_quote(symbol: str) -> Optional[Dict[str, Any]]:
             f"https://api.nasdaq.com/api/quote/{ticker}/info",
             params={"assetclass": "stocks"},
             headers=headers,
-            timeout=10,
+            timeout=4,
         )
         response.raise_for_status()
         data = response.json().get("data") or {}
         primary = data.get("primaryData") or {}
         price = parse_market_number(primary.get("lastSalePrice"))
-        history = fetch_nasdaq_equity_history(symbol, 2)
+        history = fetch_nasdaq_equity_history(symbol, 2, timeout=3)
         latest = history[-1] if history else {}
         previous = history[-2] if len(history) >= 2 else {}
 
@@ -1678,7 +1679,8 @@ def infer_asset_class(symbol: str, asset_class: str) -> str:
     crypto_symbols = {
         "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "DOT",
         "AVAX", "LINK", "MATIC", "UNI", "LTC", "ATOM", "FIL",
-        "APT", "ARB", "OP", "PEPE", "SHIB", "BONK", "NEAR"
+        "APT", "ARB", "OP", "PEPE", "SHIB", "BONK", "NEAR",
+        "HYPE", "INJ", "TIA", "SUI"
     }
     normalized = symbol.upper().replace("USDT", "").replace("USD", "")
     return "crypto" if symbol.upper().endswith("USDT") or normalized in crypto_symbols else "us_equity"
@@ -2112,6 +2114,10 @@ async def webhook_us_equity_info(
 
 COMPACT_EQUITY_REPORT_TTL_SECONDS = 600
 _COMPACT_EQUITY_REPORT_CACHE: Dict[str, Dict[str, Any]] = {}
+_COMPACT_EQUITY_REPORT_LOCKS: Dict[str, Lock] = {
+    "compact_equity_report:daily": Lock(),
+    "compact_equity_report:weekly": Lock(),
+}
 
 COMPACT_EQUITY_UNIVERSE = [
     "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL",
@@ -2471,112 +2477,127 @@ def build_compact_equity_report(report_type: str) -> Dict[str, Any]:
         data["cache"] = "hit"
         return data
 
-    sector_symbols = list(COMPACT_SECTOR_ETFS.keys())
-    all_symbols = COMPACT_EQUITY_UNIVERSE + sector_symbols
-    all_snapshots = _fetch_compact_snapshots(all_symbols, max_workers=min(24, len(all_symbols)))
-    snapshots = [item for item in all_snapshots if item.get("symbol") in COMPACT_EQUITY_UNIVERSE]
-    sectors = [item for item in all_snapshots if item.get("symbol") in COMPACT_SECTOR_ETFS]
-    earnings_calendar = _fetch_compact_earnings_calendar()
-    if not snapshots:
-        data = _empty_compact_equity_report(
-            report_type,
-            "快速报告公开行情源暂不可用，请稍后刷新。"
-        )
-        data["earnings_calendar"] = earnings_calendar
-        _COMPACT_EQUITY_REPORT_CACHE[cache_key] = {"data": data, "_cached_at": now_epoch}
+    lock = _COMPACT_EQUITY_REPORT_LOCKS.setdefault(cache_key, Lock())
+    if not lock.acquire(blocking=False):
+        if cached:
+            data = cached["data"].copy()
+            data["cache"] = "stale"
+            data["risk_warnings"] = list(data.get("risk_warnings") or [])
+            data["risk_warnings"].append("报告正在刷新，已先返回上一份缓存。")
+            return data
+        data = _empty_compact_equity_report(report_type, "报告正在刷新，请稍后重试。")
+        data["cache"] = "refreshing"
         return data
 
-    snapshots.sort(key=lambda item: item.get("score", 0), reverse=True)
-    up_count = len([item for item in snapshots if item.get("change_1d", 0) > 0])
-    down_count = len([item for item in snapshots if item.get("change_1d", 0) < 0])
-    breadth_pct = round(up_count / max(1, len(snapshots)) * 100, 1)
-    avg_change_1d = round(
-        sum(float(item.get("change_1d") or 0) for item in snapshots) / max(1, len(snapshots)),
-        2,
-    )
+    try:
+        sector_symbols = list(COMPACT_SECTOR_ETFS.keys())
+        all_symbols = COMPACT_EQUITY_UNIVERSE + sector_symbols
+        all_snapshots = _fetch_compact_snapshots(all_symbols, max_workers=min(24, len(all_symbols)))
+        snapshots = [item for item in all_snapshots if item.get("symbol") in COMPACT_EQUITY_UNIVERSE]
+        sectors = [item for item in all_snapshots if item.get("symbol") in COMPACT_SECTOR_ETFS]
+        earnings_calendar = _fetch_compact_earnings_calendar()
+        if not snapshots:
+            data = _empty_compact_equity_report(
+                report_type,
+                "快速报告公开行情源暂不可用，请稍后刷新。"
+            )
+            data["earnings_calendar"] = earnings_calendar
+            _COMPACT_EQUITY_REPORT_CACHE[cache_key] = {"data": data, "_cached_at": now_epoch}
+            return data
 
-    if breadth_pct >= 60 and avg_change_1d >= 0:
-        market_signal = "RISK_ON"
-    elif breadth_pct <= 40 and avg_change_1d < 0:
-        market_signal = "RISK_OFF"
-    else:
-        market_signal = "NEUTRAL"
+        snapshots.sort(key=lambda item: item.get("score", 0), reverse=True)
+        up_count = len([item for item in snapshots if item.get("change_1d", 0) > 0])
+        down_count = len([item for item in snapshots if item.get("change_1d", 0) < 0])
+        breadth_pct = round(up_count / max(1, len(snapshots)) * 100, 1)
+        avg_change_1d = round(
+            sum(float(item.get("change_1d") or 0) for item in snapshots) / max(1, len(snapshots)),
+            2,
+        )
 
-    sector_ranking = []
-    for item in sorted(sectors, key=lambda row: row.get("change_1m", 0), reverse=True):
-        symbol = item.get("symbol")
-        change_1m = item.get("change_1m", 0)
-        sector_ranking.append({
-            "symbol": symbol,
-            "name": COMPACT_SECTOR_ETFS.get(symbol, symbol),
-            "sector": COMPACT_SECTOR_ETFS.get(symbol, symbol),
-            "score": item.get("score"),
-            "change_pct": f"{change_1m:+.2f}%",
-            "flow": "INFLOW" if change_1m >= 0 else "OUTFLOW",
-            "signal": item.get("signal"),
-        })
+        if breadth_pct >= 60 and avg_change_1d >= 0:
+            market_signal = "RISK_ON"
+        elif breadth_pct <= 40 and avg_change_1d < 0:
+            market_signal = "RISK_OFF"
+        else:
+            market_signal = "NEUTRAL"
 
-    sector_avg = (
-        sum(float(item.get("change_1m") or 0) for item in sectors) / len(sectors)
-        if sectors else 0
-    )
-    if sector_avg > 1:
-        macro_signal = "RISK_ON"
-    elif sector_avg < -1:
-        macro_signal = "RISK_OFF"
-    else:
-        macro_signal = "NEUTRAL"
+        sector_ranking = []
+        for item in sorted(sectors, key=lambda row: row.get("change_1m", 0), reverse=True):
+            symbol = item.get("symbol")
+            change_1m = item.get("change_1m", 0)
+            sector_ranking.append({
+                "symbol": symbol,
+                "name": COMPACT_SECTOR_ETFS.get(symbol, symbol),
+                "sector": COMPACT_SECTOR_ETFS.get(symbol, symbol),
+                "score": item.get("score"),
+                "change_pct": f"{change_1m:+.2f}%",
+                "flow": "INFLOW" if change_1m >= 0 else "OUTFLOW",
+                "signal": item.get("signal"),
+            })
 
-    strong_buys = [item for item in snapshots if item.get("signal") == "STRONG_BUY"][:5]
-    buy_candidates = [item for item in snapshots if item.get("signal") in ("STRONG_BUY", "BUY")][:8]
-    recommendations = [_compact_trade_plan(item) for item in buy_candidates[:6]]
+        sector_avg = (
+            sum(float(item.get("change_1m") or 0) for item in sectors) / len(sectors)
+            if sectors else 0
+        )
+        if sector_avg > 1:
+            macro_signal = "RISK_ON"
+        elif sector_avg < -1:
+            macro_signal = "RISK_OFF"
+        else:
+            macro_signal = "NEUTRAL"
 
-    risk_warnings = []
-    if market_signal == "RISK_OFF":
-        risk_warnings.append("市场广度偏弱，建议降低仓位并等待确认。")
-    if breadth_pct < 45:
-        risk_warnings.append("上涨股票占比低于 45%，追高风险上升。")
-    if not sector_ranking:
-        risk_warnings.append("板块轮动数据暂缺，请结合盘中行情复核。")
-    if not earnings_calendar["this_week"] and not earnings_calendar["next_week"]:
-        risk_warnings.append("财报日历暂缺，请在交易前单独复核公司事件。")
-    if not risk_warnings:
-        risk_warnings.append("快速报告仅用于盘前/盘中筛选，交易前请复核价格、成交量与财报事件。")
+        strong_buys = [item for item in snapshots if item.get("signal") == "STRONG_BUY"][:5]
+        buy_candidates = [item for item in snapshots if item.get("signal") in ("STRONG_BUY", "BUY")][:8]
+        recommendations = [_compact_trade_plan(item) for item in buy_candidates[:6]]
 
-    generated_at = datetime.utcnow().isoformat()
-    period_label = "每周市场扫描" if report_type == "weekly" else "每日市场扫描"
-    data = {
-        "status": "success",
-        "report_type": report_type,
-        "period_label": period_label,
-        "generated_at": generated_at,
-        "timestamp": generated_at,
-        "source": COMPACT_EQUITY_REPORT_SOURCES,
-        "market_overview": {
+        risk_warnings = []
+        if market_signal == "RISK_OFF":
+            risk_warnings.append("市场广度偏弱，建议降低仓位并等待确认。")
+        if breadth_pct < 45:
+            risk_warnings.append("上涨股票占比低于 45%，追高风险上升。")
+        if not sector_ranking:
+            risk_warnings.append("板块轮动数据暂缺，请结合盘中行情复核。")
+        if not earnings_calendar["this_week"] and not earnings_calendar["next_week"]:
+            risk_warnings.append("财报日历暂缺，请在交易前单独复核公司事件。")
+        if not risk_warnings:
+            risk_warnings.append("快速报告仅用于盘前/盘中筛选，交易前请复核价格、成交量与财报事件。")
+
+        generated_at = datetime.utcnow().isoformat()
+        period_label = "每周市场扫描" if report_type == "weekly" else "每日市场扫描"
+        data = {
+            "status": "success",
+            "report_type": report_type,
+            "period_label": period_label,
+            "generated_at": generated_at,
+            "timestamp": generated_at,
+            "source": COMPACT_EQUITY_REPORT_SOURCES,
+            "market_overview": {
+                "market_signal": market_signal,
+                "breadth_pct": breadth_pct,
+                "avg_change_1d": avg_change_1d,
+            },
             "market_signal": market_signal,
             "breadth_pct": breadth_pct,
-            "avg_change_1d": avg_change_1d,
-        },
-        "market_signal": market_signal,
-        "breadth_pct": breadth_pct,
-        "macro_signal": macro_signal,
-        "stats": {
-            "scanned": len(snapshots),
-            "scan_count": len(snapshots),
-            "total_stocks_scanned": len(snapshots),
-            "up_count": up_count,
-            "down_count": down_count,
-        },
-        "strong_buys": strong_buys,
-        "buy_candidates": buy_candidates,
-        "sector_ranking": sector_ranking[:8],
-        "recommendations": recommendations,
-        "earnings_calendar": earnings_calendar,
-        "risk_warnings": risk_warnings,
-        "cache": "miss",
-    }
-    _COMPACT_EQUITY_REPORT_CACHE[cache_key] = {"data": data, "_cached_at": now_epoch}
-    return data
+            "macro_signal": macro_signal,
+            "stats": {
+                "scanned": len(snapshots),
+                "scan_count": len(snapshots),
+                "total_stocks_scanned": len(snapshots),
+                "up_count": up_count,
+                "down_count": down_count,
+            },
+            "strong_buys": strong_buys,
+            "buy_candidates": buy_candidates,
+            "sector_ranking": sector_ranking[:8],
+            "recommendations": recommendations,
+            "earnings_calendar": earnings_calendar,
+            "risk_warnings": risk_warnings,
+            "cache": "miss",
+        }
+        _COMPACT_EQUITY_REPORT_CACHE[cache_key] = {"data": data, "_cached_at": now_epoch}
+        return data
+    finally:
+        lock.release()
 
 
 @app.get("/webhooks/daily_report", tags=["分析报告"])
@@ -2601,21 +2622,16 @@ async def webhook_daily_report(
             if not rate_limiter.is_allowed("daily_report"):
                 raise HTTPException(status_code=429, detail="请求过于频繁")
 
+        data = build_compact_equity_report("daily")
         if compact:
-            return build_compact_equity_report("daily")
-        
-        from src.analysis_report import generate_report, report_to_dict
-        from datetime import datetime
-        from zoneinfo import ZoneInfo
-        
-        report = generate_report(report_type="daily")
-        data = report_to_dict(report)
+            return data
         
         return {
             "status": "success",
             "report_type": "daily",
             "data": data,
-            "timestamp": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat()
+            "mode": "compact_fallback",
+            "timestamp": datetime.utcnow().isoformat()
         }
         
     except Exception as e:
@@ -2636,21 +2652,16 @@ async def webhook_weekly_report(
             if not rate_limiter.is_allowed("weekly_report"):
                 raise HTTPException(status_code=429, detail="请求过于频繁")
 
+        data = build_compact_equity_report("weekly")
         if compact:
-            return build_compact_equity_report("weekly")
-        
-        from src.analysis_report import generate_report, report_to_dict
-        from datetime import datetime
-        from zoneinfo import ZoneInfo
-        
-        report = generate_report(report_type="weekly")
-        data = report_to_dict(report)
+            return data
         
         return {
             "status": "success",
             "report_type": "weekly",
             "data": data,
-            "timestamp": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat()
+            "mode": "compact_fallback",
+            "timestamp": datetime.utcnow().isoformat()
         }
         
     except Exception as e:

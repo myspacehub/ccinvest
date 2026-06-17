@@ -122,6 +122,13 @@ class TestCollector:
 
 class TestWebhook:
     """Webhook 模块测试"""
+
+    def test_infer_asset_class_recognizes_new_crypto_symbols(self):
+        """测试热门新代币不会被误判为美股"""
+        from src.webhook_server import infer_asset_class
+
+        for symbol in ["HYPE", "INJ", "TIA", "SUI"]:
+            assert infer_asset_class(symbol, "auto") == "crypto"
     
     def test_signal_endpoint_uses_raw_request_for_signature(self, tmp_path, monkeypatch):
         """测试业务 payload 不会覆盖 FastAPI 原始请求对象"""
