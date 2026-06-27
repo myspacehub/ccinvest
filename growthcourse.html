@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#3D3A8C">
+<title>🌱 全方位成长课程</title>
+<style>
+:root{
+  --bg:#F7F6F3;--bg2:#EFEDE8;--bg3:#E2DFD8;
+  --card:#FFFFFF;--text:#1A1A18;--text2:#68665E;--text3:#9A9890;
+  --acc:#3D3A8C;--acc2:#5652B0;--accL:#EEEDFE;--accM:#7F77DD;
+  --grn:#2D6A4F;--grnL:#D8F3DC;--amb:#A0520A;--ambL:#FFF3E0;--red:#C0392B;
+  --bd:rgba(26,26,24,.09);--bd2:rgba(26,26,24,.18);
+  --r:12px;--rL:18px;--sh:0 1px 4px rgba(0,0,0,.07);--shM:0 4px 16px rgba(0,0,0,.1);
+  --nb:56px;--sb:env(safe-area-inset-bottom,0px);--st:env(safe-area-inset-top,0px);
+}
+@media(prefers-color-scheme:dark){
+  :root{
+    --bg:#121210;--bg2:#1A1918;--bg3:#242320;
+    --card:#1A1918;--text:#F0EFE8;--text2:#9A9890;--text3:#68665E;
+    --acc:#8078E0;--acc2:#9A93E8;--accL:#22204E;--accM:#AFA9EC;
+    --grn:#52B788;--grnL:#1B3A2A;--amb:#F4A261;--ambL:#2D1F0A;--red:#E74C3C;
+    --bd:rgba(240,239,232,.09);--bd2:rgba(240,239,232,.18);
+  }
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Noto Sans SC',sans-serif;
+  background:var(--bg);color:var(--text);font-size:15px;line-height:1.6;
+  height:100vh;height:100dvh;overflow:hidden;
+}
+
+/* ── LAYOUT: fixed shell, no overflow on body ── */
+.shell{display:flex;height:100vh;height:100dvh;overflow:hidden}
+
+/* ── SIDEBAR (desktop ≥768px) ── */
+.sidebar{
+  width:220px;flex-shrink:0;background:var(--bg2);
+  border-right:.5px solid var(--bd);
+  display:none;flex-direction:column;overflow-y:auto;
+}
+@media(min-width:768px){.sidebar{display:flex}}
+.sd-logo{padding:20px 16px 12px;border-bottom:.5px solid var(--bd)}
+.sd-logo h1{font-size:13px;font-weight:700;color:var(--acc)}
+.sd-logo p{font-size:11px;color:var(--text3);margin-top:2px}
+.sd-nav{flex:1;padding:8px 0}
+.sd-sec{padding:8px 12px 4px;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.08em;text-transform:uppercase}
+.sd-row{
+  display:flex;align-items:center;gap:8px;padding:8px 16px;
+  font-size:13px;color:var(--text2);cursor:pointer;
+  border-left:2px solid transparent;transition:all .12s;
+}
+.sd-row:hover{background:var(--bg3);color:var(--text)}
+.sd-row.on{background:var(--accL);color:var(--acc);border-left-color:var(--acc);font-weight:600}
+.sd-wn{width:20px;height:20px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
+.sd-row.on .sd-wn{background:var(--acc);color:#fff}
+.sd-row.wkdone .sd-wn{background:var(--grnL);color:var(--grn)}
+.sd-bar{width:28px;height:3px;background:var(--bg3);border-radius:2px;margin-left:auto;overflow:hidden;flex-shrink:0}
+.sd-bar-fill{height:100%;background:var(--accM);border-radius:2px;transition:width .3s}
+
+/* ── MAIN AREA ── */
+.main{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden}
+
+/* ── TOPBAR ── */
+.topbar{
+  flex-shrink:0;
+  background:var(--card);border-bottom:.5px solid var(--bd);
+  padding:calc(var(--st) + 10px) 16px 10px;
+  display:flex;align-items:center;gap:10px;min-height:calc(var(--st) + 50px);
+  z-index:50;
+}
+.tb-back{
+  width:36px;height:36px;border-radius:50%;background:var(--bg2);border:none;cursor:pointer;
+  display:none;align-items:center;justify-content:center;font-size:20px;color:var(--text2);flex-shrink:0;
+}
+.tb-back.show{display:flex}
+.tb-title{flex:1;font-size:16px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tb-badge{font-size:11px;font-weight:700;background:var(--accL);color:var(--acc);padding:3px 9px;border-radius:99px;display:none;flex-shrink:0}
+.tb-badge.show{display:block}
+
+/* ── TAB STRIP (inside scroll, but sticky relative to .content) ── */
+/* KEY FIX: tab-strip is NOT inside overflow scroll, it's separate */
+.week-tabs{
+  flex-shrink:0;
+  background:var(--card);border-bottom:.5px solid var(--bd);
+  display:none;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;
+}
+.week-tabs::-webkit-scrollbar{display:none}
+.week-tabs.show{display:flex}
+.wt-btn{
+  flex-shrink:0;padding:11px 16px;font-size:13px;font-weight:500;
+  background:none;border:none;border-bottom:2px solid transparent;
+  color:var(--text3);cursor:pointer;white-space:nowrap;
+}
+.wt-btn.on{color:var(--acc);border-bottom-color:var(--acc)}
+
+/* ── CONTENT SCROLL AREA ── */
+.content{
+  flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding-bottom:calc(var(--nb) + var(--sb) + 8px);
+}
+@media(min-width:768px){.content{padding-bottom:24px}}
+
+/* ── SCREENS (inside .content) ── */
+.screen{display:none}
+.screen.on{display:block}
+
+/* ── BOTTOM NAV (mobile) ── */
+.botnav{
+  position:fixed;bottom:0;left:0;right:0;z-index:100;
+  background:var(--card);border-top:.5px solid var(--bd);
+  padding-bottom:var(--sb);
+  display:flex;
+}
+@media(min-width:768px){.botnav{display:none}}
+.bn-btn{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:2px;border:none;background:none;cursor:pointer;
+  padding:8px 4px calc(4px);color:var(--text3);font-size:10px;
+  position:relative;min-height:var(--nb);
+}
+.bn-btn.on{color:var(--acc)}
+.bn-btn.on::before{content:'';position:absolute;top:0;left:25%;right:25%;height:2px;background:var(--acc);border-radius:0 0 2px 2px}
+.bn-ico{font-size:24px;line-height:1}
+
+/* ── DASHBOARD ── */
+.dash-inner{padding:20px 16px 8px}
+@media(min-width:768px){.dash-inner{max-width:760px;padding:28px 32px 8px}}
+.dash-hi h2{font-size:22px;font-weight:700;margin-bottom:2px}
+.dash-hi p{font-size:13px;color:var(--text2);margin-bottom:18px}
+.prog-card{
+  background:linear-gradient(135deg,var(--acc) 0%,var(--acc2) 100%);
+  border-radius:var(--rL);padding:18px 20px;margin-bottom:16px;
+  color:#fff;box-shadow:0 4px 20px rgba(61,58,140,.3);
+}
+.prog-lbl{font-size:12px;opacity:.8;font-weight:500;margin-bottom:4px}
+.prog-pct{font-size:38px;font-weight:800;line-height:1}
+.prog-sub{font-size:12px;opacity:.75;margin-top:2px;margin-bottom:14px}
+.prog-bg{height:6px;background:rgba(255,255,255,.25);border-radius:3px;overflow:hidden}
+.prog-fill{height:100%;background:rgba(255,255,255,.85);border-radius:3px;transition:width .5s}
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px}
+.sc{background:var(--card);border:.5px solid var(--bd);border-radius:var(--r);padding:12px 6px;text-align:center;box-shadow:var(--sh)}
+.sc-v{font-size:20px;font-weight:700;color:var(--acc)}
+.sc-l{font-size:10px;color:var(--text3);margin-top:2px;line-height:1.3}
+.sec-hd{font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px}
+
+/* ── WEEK CARDS ── */
+.wk-list{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+@media(min-width:768px){.wk-list{display:grid;grid-template-columns:1fr 1fr;gap:10px}}
+.wk-card{
+  background:var(--card);border:.5px solid var(--bd);border-radius:var(--rL);
+  padding:14px 16px;display:flex;align-items:center;gap:12px;
+  cursor:pointer;box-shadow:var(--sh);transition:transform .12s,box-shadow .12s;
+  -webkit-user-select:none;user-select:none;
+}
+.wk-card:active{transform:scale(.98);box-shadow:none}
+.wk-badge{
+  width:38px;height:38px;border-radius:12px;flex-shrink:0;
+  background:var(--accL);color:var(--acc);
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:800;
+}
+.wk-badge.done{background:var(--grnL);color:var(--grn);font-size:18px}
+.wk-info{flex:1;min-width:0}
+.wk-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wk-tags{font-size:11px;color:var(--text3);margin-top:2px}
+.wk-prog{display:flex;align-items:center;gap:6px;margin-top:6px}
+.wk-bar{flex:1;height:3px;background:var(--bg3);border-radius:2px;overflow:hidden}
+.wk-bar-fill{height:100%;background:var(--accM);border-radius:2px}
+.wk-pct{font-size:10px;color:var(--text3)}
+.wk-arr{color:var(--text3);font-size:18px;flex-shrink:0}
+
+/* ── WEEK DETAIL ── */
+.wk-detail-inner{padding:0 16px 8px}
+@media(min-width:768px){.wk-detail-inner{max-width:760px;padding:0 32px 8px}}
+.core-q{
+  background:var(--accL);border-left:3px solid var(--acc);
+  border-radius:0 var(--r) var(--r) 0;padding:12px 14px;
+  margin:16px 0;font-size:14px;font-weight:600;color:var(--acc);line-height:1.5;
+}
+.tab-pane{display:none}
+.tab-pane.on{display:block}
+
+/* ── LESSONS ── */
+.lesson{border:.5px solid var(--bd);border-radius:var(--rL);margin-bottom:10px;overflow:hidden;background:var(--card)}
+.lesson-hd{display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;-webkit-user-select:none;user-select:none}
+.lesson-hd:active{background:var(--bg2)}
+.l-ico{width:36px;height:36px;border-radius:10px;background:var(--accL);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.l-info{flex:1;min-width:0}
+.l-title{font-size:14px;font-weight:600}
+.l-sub{font-size:12px;color:var(--text3);margin-top:1px}
+.l-chev{color:var(--text3);font-size:20px;transition:transform .2s;flex-shrink:0}
+.lesson-bd{display:none;border-top:.5px solid var(--bd)}
+.lesson-bd.open{display:block}
+.lesson-text{padding:16px;font-size:14px;line-height:1.75}
+.lesson-text h4{font-size:13px;font-weight:700;color:var(--acc);margin:14px 0 6px;text-transform:uppercase;letter-spacing:.04em}
+.lesson-text p{margin-bottom:8px}
+.lesson-text ul,.lesson-text ol{padding-left:18px;margin:8px 0}
+.lesson-text li{margin-bottom:5px}
+.lesson-text strong{font-weight:700}
+.callout{background:var(--accL);border-left:3px solid var(--acc);border-radius:0 8px 8px 0;padding:10px 14px;margin:12px 0;font-size:13px;color:var(--acc);line-height:1.6}
+.tip{background:var(--ambL);border-left:3px solid var(--amb);border-radius:0 8px 8px 0;padding:10px 14px;margin:12px 0;font-size:13px;color:var(--amb);line-height:1.6}
+.note-area{padding:14px 16px;background:var(--bg2);border-top:.5px solid var(--bd)}
+.note-lbl{font-size:11px;font-weight:700;color:var(--text3);margin-bottom:6px}
+.note-area textarea{width:100%;border:.5px solid var(--bd2);border-radius:var(--r);padding:10px 12px;font-size:14px;font-family:inherit;resize:none;min-height:80px;background:var(--card);color:var(--text);line-height:1.5}
+.note-area textarea:focus{outline:none;border-color:var(--acc)}
+.note-row{display:flex;align-items:center;gap:8px;margin-top:8px}
+.btn-sv{padding:8px 18px;background:var(--acc);color:#fff;border:none;border-radius:var(--r);font-size:13px;font-weight:600;cursor:pointer;min-height:38px}
+.btn-sv:active{opacity:.75}
+.saved{font-size:12px;color:var(--grn);display:none}
+.saved.show{display:block}
+
+/* ── TASKS ── */
+.task-prog-row{background:var(--card);border:.5px solid var(--bd);border-radius:var(--r);padding:12px 14px;margin:16px 0 12px;display:flex;align-items:center;gap:12px}
+.task-prog-bar{flex:1;height:6px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.task-prog-fill{height:100%;background:var(--acc);border-radius:3px;transition:width .3s}
+.task-prog-txt{font-size:13px;font-weight:700;color:var(--acc);flex-shrink:0}
+.task-item{background:var(--card);border:.5px solid var(--bd);border-radius:var(--rL);margin-bottom:8px;overflow:hidden}
+.task-main{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;cursor:pointer;-webkit-user-select:none;user-select:none}
+.task-main:active{background:var(--bg2)}
+.tcb{width:24px;height:24px;border-radius:50%;border:2px solid var(--bd2);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;transition:all .15s;font-size:14px}
+.tcb.done{background:var(--acc);border-color:var(--acc);color:#fff}
+.task-txt{font-size:14px;line-height:1.5;flex:1}
+.task-item.done .task-txt{text-decoration:line-through;color:var(--text3)}
+.tnote-toggle{padding:0 16px 4px}
+.tnote-btn{background:none;border:none;font-size:12px;color:var(--acc);cursor:pointer;padding:4px 0 6px;display:flex;align-items:center;gap:4px;min-height:32px}
+.tnote-zone{display:none;padding:0 16px 12px}
+.tnote-zone.open{display:block}
+.tnote-zone textarea{width:100%;border:.5px solid var(--bd2);border-radius:var(--r);padding:10px 12px;font-size:13px;font-family:inherit;resize:none;min-height:70px;background:var(--bg2);color:var(--text)}
+.tnote-zone textarea:focus{outline:none;border-color:var(--acc)}
+
+/* ── TOOLS ── */
+.tool-card{background:var(--card);border:.5px solid var(--bd);border-radius:var(--rL);margin-bottom:12px;overflow:hidden;box-shadow:var(--sh)}
+.tool-hd{padding:14px 16px;background:var(--bg2);border-bottom:.5px solid var(--bd);display:flex;align-items:center;gap:10px}
+.tool-ico{font-size:22px}
+.tool-hd-info h4{font-size:14px;font-weight:700}
+.tool-hd-info p{font-size:12px;color:var(--text2);margin-top:2px}
+.tool-body{padding:16px !important}
+.field-lbl{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px}
+.fg{margin-bottom:14px}
+.fg textarea,.fg input[type=text],.fg input[type=time]{
+  width:100%;border:.5px solid var(--bd2);border-radius:var(--r);
+  padding:10px 12px;font-size:14px;font-family:inherit;
+  background:var(--bg2);color:var(--text);min-height:44px;
+}
+.fg textarea:focus,.fg input:focus{outline:none;border-color:var(--acc)}
+.chip-wrap{display:flex;flex-wrap:wrap;gap:8px}
+.chip{padding:7px 14px;border:.5px solid var(--bd2);border-radius:99px;font-size:13px;cursor:pointer;color:var(--text2);background:var(--bg2);-webkit-user-select:none;user-select:none}
+.chip:active{transform:scale(.95)}
+.chip.sel{background:var(--accL);color:var(--acc);border-color:var(--accM);font-weight:600}
+.sl-row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.sl-lbl{font-size:13px;color:var(--text2);min-width:72px;flex-shrink:0}
+.sl-row input[type=range]{flex:1;accent-color:var(--acc)}
+.sl-val{font-size:14px;font-weight:700;color:var(--acc);min-width:20px;text-align:right}
+.habit-blk{border:.5px solid var(--bd);border-radius:var(--r);padding:14px;margin-bottom:10px;background:var(--bg2)}
+.habit-blk-hd{font-size:12px;font-weight:700;color:var(--text2);margin-bottom:10px}
+.habit-blk .fg{margin-bottom:8px}
+.habit-blk input[type=text]{width:100%;border:.5px solid var(--bd2);border-radius:var(--r);padding:9px 12px;font-size:13px;font-family:inherit;background:var(--card);color:var(--text);min-height:42px}
+.habit-blk input:focus{outline:none;border-color:var(--acc)}
+.tr-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.tr-row input[type=text]{flex:1;border:.5px solid var(--bd2);border-radius:var(--r);padding:9px 12px;font-size:13px;font-family:inherit;background:var(--bg2);color:var(--text);min-height:42px}
+.tr-row input:focus{outline:none;border-color:var(--acc)}
+.day-btns{display:flex;gap:4px}
+.day-btn{width:30px;height:30px;border-radius:8px;border:.5px solid var(--bd2);background:none;font-size:11px;font-weight:600;cursor:pointer;color:var(--text2);-webkit-user-select:none;user-select:none}
+.day-btn:active{transform:scale(.9)}
+.day-btn.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.cbt-grid,.nvc-grid{display:flex;flex-direction:column;gap:10px}
+@media(min-width:600px){.cbt-grid,.nvc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}}
+.sleep-row{display:flex;align-items:center;gap:6px;margin-bottom:8px;padding:10px 12px;background:var(--bg2);border-radius:var(--r)}
+.sleep-day{font-size:12px;color:var(--text2);width:26px;flex-shrink:0;font-weight:600}
+.sleep-row input[type=time]{flex:1;min-width:0;border:.5px solid var(--bd2);border-radius:8px;padding:6px 8px;font-size:12px;font-family:inherit;background:var(--card);color:var(--text)}
+.sleep-q{font-size:12px;font-weight:700;color:var(--acc);min-width:16px;text-align:right}
+.rv-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.rv-dim{font-size:12px;color:var(--text2);min-width:56px;flex-shrink:0}
+.rv-row input[type=range]{flex:1;accent-color:var(--acc)}
+.rv-val{font-size:13px;font-weight:700;color:var(--acc);min-width:20px;text-align:right}
+.tool-foot{display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:14px;border-top:.5px solid var(--bd)}
+
+/* ── RESOURCES ── */
+.res-list{display:flex;flex-direction:column;gap:8px;padding:16px 0}
+.res-item{display:flex;align-items:flex-start;gap:12px;padding:14px;border:.5px solid var(--bd);border-radius:var(--r);background:var(--card)}
+.res-ico{font-size:22px;flex-shrink:0}
+.res-title{font-size:14px;font-weight:600;margin-bottom:3px}
+.res-desc{font-size:12px;color:var(--text2);line-height:1.5}
+
+/* ── JOURNAL ── */
+.pg-inner{padding:16px}
+@media(min-width:768px){.pg-inner{max-width:760px;padding:28px 32px}}
+.pg-hd{margin-bottom:16px}
+.pg-hd h2{font-size:20px;font-weight:700}
+.pg-hd p{font-size:13px;color:var(--text2);margin-top:2px}
+.fab{width:100%;padding:14px;background:var(--acc);color:#fff;border:none;border-radius:var(--rL);font-size:15px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:16px;box-shadow:0 4px 14px rgba(61,58,140,.35)}
+.fab:active{opacity:.8}
+.filter-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.f-btn{padding:6px 12px;border:.5px solid var(--bd2);border-radius:99px;font-size:12px;background:none;cursor:pointer;color:var(--text2);min-height:34px;-webkit-user-select:none;user-select:none}
+.f-btn.on{background:var(--accL);color:var(--acc);border-color:var(--accM);font-weight:600}
+.jnl-entry{background:var(--card);border:.5px solid var(--bd);border-radius:var(--rL);padding:16px;margin-bottom:10px}
+.jnl-meta{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.jnl-date{font-size:12px;font-weight:700;color:var(--text2)}
+.jnl-tag{font-size:11px;background:var(--accL);color:var(--acc);padding:3px 8px;border-radius:99px}
+.jnl-del{background:none;border:none;font-size:20px;color:var(--text3);cursor:pointer;padding:2px 6px;min-height:32px}
+.jnl-del:active{color:var(--red)}
+.jnl-q{font-size:11px;color:var(--text3);font-weight:600;margin-bottom:3px}
+.jnl-a{font-size:14px;line-height:1.55;margin-bottom:10px}
+.empty{text-align:center;padding:48px 20px;color:var(--text3)}
+.empty-ico{font-size:48px;margin-bottom:12px}
+
+/* ── RATING ── */
+.rat-wsel{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.rat-item{background:var(--card);border:.5px solid var(--bd);border-radius:var(--rL);padding:16px;margin-bottom:10px}
+.rat-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.rat-name{font-size:14px;font-weight:700}
+.rat-score{font-size:26px;font-weight:800;color:var(--acc)}
+.stars{display:flex;gap:2px;flex-wrap:wrap;margin-bottom:6px}
+.star{font-size:22px;cursor:pointer;color:var(--bg3);-webkit-user-select:none;user-select:none}
+.star.on{color:#F4A261}
+.rat-sub{font-size:12px;color:var(--text3)}
+.radar-card{background:var(--card);border:.5px solid var(--bd);border-radius:var(--rL);padding:16px;text-align:center;margin-top:8px}
+.radar-card h4{font-size:13px;font-weight:700;text-align:left;margin-bottom:14px}
+
+/* ── MODAL ── */
+.modal-bg{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.5);align-items:flex-end;justify-content:center}
+.modal-bg.open{display:flex}
+.modal-sheet{background:var(--card);width:100%;max-width:600px;border-radius:var(--rL) var(--rL) 0 0;padding:20px 18px calc(20px + var(--sb));max-height:90vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.modal-sheet h3{font-size:17px;font-weight:700;margin-bottom:16px}
+.modal-wsel{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.mw-btn{padding:6px 12px;border:.5px solid var(--bd2);border-radius:99px;font-size:12px;background:none;cursor:pointer;color:var(--text2);min-height:34px}
+.mw-btn.on{background:var(--accL);color:var(--acc);border-color:var(--accM);font-weight:600}
+.modal-fg{margin-bottom:14px}
+.modal-fg label{display:block;font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px}
+.modal-fg textarea{width:100%;border:.5px solid var(--bd2);border-radius:var(--r);padding:10px 12px;font-size:14px;font-family:inherit;background:var(--bg2);color:var(--text);resize:none}
+.modal-fg textarea:focus{outline:none;border-color:var(--acc)}
+.modal-actions{display:flex;gap:10px;margin-top:16px}
+.btn-cancel{flex:1;padding:13px;background:var(--bg2);border:none;border-radius:var(--r);cursor:pointer;color:var(--text2);font-size:14px;font-weight:500}
+.btn-primary{flex:2;padding:13px;background:var(--acc);color:#fff;border:none;border-radius:var(--r);cursor:pointer;font-size:14px;font-weight:700}
+.btn-primary:active{opacity:.8}
+@media(min-width:768px){.modal-bg{align-items:center}.modal-sheet{border-radius:var(--rL);margin:0}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- SIDEBAR (desktop) -->
+<aside class="sidebar" id="sidebar">
+  <div class="sd-logo"><h1>🌱 全方位成长课程</h1><p>8周深度系统版</p></div>
+  <div class="sd-nav">
+    <div class="sd-sec">主菜单</div>
+    <div class="sd-row on" id="sdr-dash" onclick="go('dash')"><span>📊</span>总览</div>
+    <div class="sd-row" id="sdr-learn" onclick="go('learn')"><span>📖</span>学习</div>
+    <div class="sd-row" id="sdr-journal" onclick="go('journal')"><span>✏️</span>成长日记</div>
+    <div class="sd-row" id="sdr-rating" onclick="go('rating')"><span>⭐</span>周期自评</div>
+    <div class="sd-sec" style="margin-top:8px">8周课程</div>
+    <div id="sd-weeks"></div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <button class="tb-back" id="tb-back" onclick="backFromWeek()">‹</button>
+    <span class="tb-title" id="tb-title">🌱 全方位成长课程</span>
+    <span class="tb-badge" id="tb-badge"></span>
+  </header>
+
+  <!-- WEEK TAB STRIP (shown only on week screens, outside scroll) -->
+  <div class="week-tabs" id="week-tabs">
+    <button class="wt-btn on" id="wt-theory" onclick="switchTab('theory')">📖 知识详解</button>
+    <button class="wt-btn" id="wt-tasks" onclick="switchTab('tasks')">✅ 实践任务</button>
+    <button class="wt-btn" id="wt-tools" onclick="switchTab('tools')">🛠️ 操作练习</button>
+    <button class="wt-btn" id="wt-res" onclick="switchTab('res')">🔗 推荐资源</button>
+  </div>
+
+  <!-- SCROLLABLE CONTENT -->
+  <div class="content" id="content">
+
+    <!-- DASHBOARD -->
+    <div class="screen on" id="sc-dash">
+      <div class="dash-inner">
+        <div class="dash-hi"><h2>欢迎回来 👋</h2><p>坚持是最好的天赋。继续你的成长旅程。</p></div>
+        <div class="prog-card">
+          <div class="prog-lbl">整体课程进度</div>
+          <div class="prog-pct" id="dp-pct">0%</div>
+          <div class="prog-sub" id="dp-sub">尚未开始</div>
+          <div class="prog-bg"><div class="prog-fill" id="dp-bar" style="width:0%"></div></div>
+        </div>
+        <div class="stats-row">
+          <div class="sc"><div class="sc-v" id="st-t">0</div><div class="sc-l">完成任务</div></div>
+          <div class="sc"><div class="sc-v" id="st-n">0</div><div class="sc-l">学习笔记</div></div>
+          <div class="sc"><div class="sc-v" id="st-j">0</div><div class="sc-l">日记条目</div></div>
+          <div class="sc"><div class="sc-v" id="st-s">0</div><div class="sc-l">连续天</div></div>
+        </div>
+        <div class="sec-hd">8周课程进度</div>
+        <div class="wk-list" id="dash-wks"></div>
+      </div>
+    </div>
+
+    <!-- LEARN (week selector) -->
+    <div class="screen" id="sc-learn">
+      <div class="pg-inner">
+        <div class="pg-hd"><h2>📖 课程学习</h2><p>选择本周进入详细学习内容</p></div>
+        <div class="wk-list" id="learn-wks"></div>
+      </div>
+    </div>
+
+    <!-- WEEK SCREENS (8个，每个含4个tab-pane) -->
+    <div class="screen" id="sc-week">
+      <div class="wk-detail-inner">
+        <div class="core-q" id="wk-coreq"></div>
+        <div class="tab-pane on" id="pane-theory"></div>
+        <div class="tab-pane" id="pane-tasks"></div>
+        <div class="tab-pane" id="pane-tools"></div>
+        <div class="tab-pane" id="pane-res"></div>
+      </div>
+    </div>
+
+    <!-- JOURNAL -->
+    <div class="screen" id="sc-journal">
+      <div class="pg-inner">
+        <div class="pg-hd"><h2>成长日记 ✏️</h2><p>记录思考、感悟与每日省思</p></div>
+        <button class="fab" onclick="openJModal()">＋ 写今天的日记</button>
+        <div class="filter-row" id="jnl-filter"></div>
+        <div id="jnl-list"></div>
+      </div>
+    </div>
+
+    <!-- RATING -->
+    <div class="screen" id="sc-rating">
+      <div class="pg-inner">
+        <div class="pg-hd"><h2>每周自评 ⭐</h2><p>诚实评估，看见真实的成长</p></div>
+        <div class="rat-wsel" id="rat-wsel"></div>
+        <div id="rat-items"></div>
+        <div class="radar-card" id="radar-card" style="display:none">
+          <h4 id="radar-title">Week 1 雷达图</h4>
+          <svg id="radar-svg" width="240" height="240" viewBox="0 0 240 240" style="max-width:100%"></svg>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+
+  <!-- BOTTOM NAV -->
+  <nav class="botnav">
+    <button class="bn-btn on" id="bn-dash" onclick="go('dash')"><span class="bn-ico">📊</span><span>总览</span></button>
+    <button class="bn-btn" id="bn-learn" onclick="go('learn')"><span class="bn-ico">📖</span><span>学习</span></button>
+    <button class="bn-btn" id="bn-journal" onclick="go('journal')"><span class="bn-ico">✏️</span><span>日记</span></button>
+    <button class="bn-btn" id="bn-rating" onclick="go('rating')"><span class="bn-ico">⭐</span><span>自评</span></button>
+  </nav>
+
+</div><!-- /main -->
+</div><!-- /shell -->
+
+<!-- JOURNAL MODAL -->
+<div class="modal-bg" id="jmodal">
+  <div class="modal-sheet">
+    <h3>写成长日记</h3>
+    <div class="modal-fg"><label>对应周次</label><div class="modal-wsel" id="mw-row"></div></div>
+    <div class="modal-fg"><label>今天最大的收获或洞见</label><textarea id="ji-a" rows="3" placeholder="写下今天学到或意识到的..."></textarea></div>
+    <div class="modal-fg"><label>今天我活在我的价值观里了吗？</label><textarea id="ji-b" rows="2" placeholder="诚实地反思一下..."></textarea></div>
+    <div class="modal-fg"><label>明天我想做到的一件事</label><textarea id="ji-c" rows="2" placeholder="写一件具体的行动..."></textarea></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeJModal()">取消</button>
+      <button class="btn-primary" onclick="saveJournal()">保存日记</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── DATA ── */
+const WKS=[{title:"自我认知与目标设定",tags:"价值观 · 使命 · OKR",ico:"🧭",cq:"我是谁？我想去哪里？",lessons:[{ico:"🗺️",title:"价值观梳理",sub:"找到驱动你的内在力量",body:`<p>价值观是你所有决定背后的隐形操作系统。大多数人从未认真定义过它，导致总感觉"过的不是自己想要的生活"。</p><h4>什么是核心价值观？</h4><p>价值观是驱动你行为的内在信念，例如：自由、成长、家庭、创造、影响力。它不是目标，而是判断标准——当两件事冲突时，你会选哪个？</p><h4>价值观梳理三步骤</h4><ul><li>① 列出所有对你重要的词（30个以上，不用筛选）</li><li>② 分组合并，找到最接近核心的10个</li><li>③ 强制排序：从10个中选出最重要的5个</li></ul><div class="callout">关键问题：你愿意为这个价值观牺牲其他事情吗？如果是，它就是你真正的核心价值观。</div><h4>常见价值观清单</h4><p>自由/成长/家庭/创造/影响力/诚实/健康/财富/冒险/平静/贡献/智慧/美/归属感/独立/荣誉/乐趣/安全/公正/勇气</p>`},{ico:"🎯",title:"人生轮盘评估",sub:"诚实看见生活的全貌",body:`<p>人生轮盘是最直观的现状评估工具，帮助你看清生活的哪些区域被忽视了。</p><h4>八大生活维度</h4><ul><li>健康与体力</li><li>财务与事业</li><li>人际关系</li><li>个人成长</li><li>娱乐与休闲</li><li>精神信仰</li><li>环境与居所</li><li>家庭与爱情</li></ul><h4>评估方法</h4><ul><li>对每个维度打1-10分（10分=完全满意）</li><li>找出分差最大的两个维度——这是最值得投入的地方</li></ul><div class="tip">⚠️ 陷阱：很多人高估事业，低估健康和关系。诚实作答才有意义。</div>`},{ico:"🚀",title:"使命宣言与OKR",sub:"给方向，给目标",body:`<p>个人使命宣言是你为自己写的人生方向书，简短但有力。</p><div class="callout">格式：「我的使命是通过[做什么]帮助[谁]，以便[产生什么影响]，同时让自己[如何生活]。」</div><h4>OKR目标框架</h4><ul><li><strong>O（目标）：</strong>激励人心的方向，如"成为高效能的自律者"</li><li><strong>KR（关键结果）：</strong>可量化的里程碑，如"坚持运动30天""读完3本书"</li></ul><h4>未来自我可视化</h4><p>用<strong>现在时态</strong>写你1年后的理想状态：「我每天6点起床，精力充沛地...」</p>`}],tasks:["完成价值观排序，找出你的Top 5核心价值观","为每个生活维度打分（1-10），找出最低的2个","写出你的个人使命宣言草稿（3-5句话）","用现在时态描写1年后的理想一天（至少200字）"],tools:[{id:"values",ico:"🏷️",title:"价值观排序练习",desc:"从下面选出你认为最重要的核心价值观（选5-8个）",type:"chips",opts:["自由","成长","家庭","创造","影响力","诚实","健康","财富","冒险","平静","贡献","智慧","美","归属感","独立","荣誉","乐趣","安全","公正","勇气"]},{id:"wheel",ico:"🎡",title:"人生轮盘打分",desc:"对当前生活各维度诚实打分（1-10）",type:"sliders",items:["健康体力","财务事业","人际关系","个人成长","娱乐休闲","精神信仰","家庭爱情","环境居所"]},{id:"mission",ico:"📜",title:"使命宣言草稿",desc:"填写你的个人使命宣言模板",type:"template",fields:[{k:"what",l:"我的使命是通过..."},{k:"who",l:"帮助..."},{k:"impact",l:"以便产生的影响是..."},{k:"how",l:"同时让自己能够..."}]},{id:"future",ico:"✨",title:"未来自我描述",desc:"用现在时态写出1年后你理想的一天",type:"ta",ph:"「一年后，我每天早晨...（用现在时态，至少200字）」"}],res:[{ico:"📖",title:"《活出生命的意义》",desc:"维克多·弗兰克尔 · 关于意义感与使命的经典"},{ico:"🎬",title:"TED：How great leaders inspire action",desc:"Simon Sinek · 黄金圈理论"},{ico:"📝",title:"工具：Notion OKR模板",desc:"配合本周目标设定练习使用"}]},{title:"心态与情绪管理",tags:"成长型思维 · 情绪调节",ico:"🧠",cq:"我如何面对挫折与不确定性？",lessons:[{ico:"🌱",title:"固定型 vs 成长型思维",sub:"Carol Dweck的核心研究",body:`<p>Carol Dweck的研究发现：人们对自身能力的基本信念，决定了他们面对挑战时的反应方式。</p><h4>固定型思维（Fixed Mindset）</h4><ul><li>认为才能是天生的、固定不变的</li><li>回避挑战，害怕失败暴露自己"不够聪明"</li><li>将失败归因于天赋不足</li></ul><h4>成长型思维（Growth Mindset）</h4><ul><li>认为能力可以通过努力和学习发展</li><li>将挑战视为成长的机会</li><li>将失败视为反馈，而非定义</li></ul><div class="callout">核心转换句式：「我不行」→「我还没学会」｜「这太难了」→「这需要更多练习」</div>`},{ico:"🌀",title:"认知扭曲识别与重构",sub:"10种思维陷阱及破解方法",body:`<p>认知扭曲是大脑自动产生的不合理思维模式。识别它是改变情绪的第一步。</p><h4>10种常见认知扭曲</h4><ul><li><strong>全有全无：</strong>非黑即白，"如果不完美就是失败"</li><li><strong>过度泛化：</strong>一次失败→"我总是这样"</li><li><strong>心理过滤：</strong>只关注负面信息，忽略正面</li><li><strong>贬低正面：</strong>"这次成功只是运气好"</li><li><strong>灾难化：</strong>夸大事情的严重性</li><li><strong>情感推理：</strong>"我感觉不好，所以事情一定不好"</li><li><strong>应该化：</strong>"我应该更好"——带来内疚和自责</li><li><strong>贴标签：</strong>"我是个失败者"而不是"我这次失败了"</li><li><strong>个人化：</strong>把所有问题都归因于自己</li><li><strong>预测未来：</strong>假设最坏的结果必然发生</li></ul><h4>认知重构步骤</h4><ul><li>① 识别：这是哪种扭曲？</li><li>② 找证据：现实中有什么证据支持或反对这个想法？</li><li>③ 替换：写出更平衡、更符合实际的想法</li></ul>`},{ico:"❤️",title:"情绪调节三步骤",sub:"觉察→命名→响应",body:`<p>情绪不是问题本身，压制或忽视情绪才是。</p><h4>① 觉察（Notice）</h4><p>关注身体信号：胸口发紧？呼吸变浅？情绪通常先在身体里出现。</p><h4>② 命名（Name）</h4><p>精确命名情绪会降低杏仁核的激活强度。「我感到焦虑」比「我不好」更有帮助。</p><h4>③ 响应（Respond）</h4><p>选择你的回应，而不是自动反应。</p><div class="callout">斯多葛控制二分法：先问「这在我的控制范围内吗？」<br>可控：你的想法、行动、态度。<br>不可控：他人的行为、天气、过去。</div>`}],tasks:["记录本周3个「挑战事件」，写情绪反应和认知重构","练习「负面可视化」：每天5分钟想象最坏情形，然后感恩现有","找出你最常犯的认知扭曲类型（从10种中选）","本周每次遇到困难：先问「这在我控制范围内吗？」"],tools:[{id:"cbt",ico:"📋",title:"CBT思维记录表",desc:"记录一个让你情绪波动的事件，进行完整的认知重构",type:"cbt"},{id:"distort",ico:"🔍",title:"认知扭曲识别",desc:"选出你这周最常出现的思维扭曲类型",type:"chips",opts:["全有全无","过度泛化","心理过滤","贬低正面","灾难化","情感推理","应该化","贴标签","个人化","预测未来"]},{id:"emo-log",ico:"📓",title:"情绪日记",desc:"今天情绪最强烈的一刻：发生了什么，你感受到了什么？",type:"ta",ph:"记录今天情绪最强烈的一刻：发生了什么事？身体有什么感受？你用什么情绪词来描述它？你是如何响应的？"}],res:[{ico:"📖",title:"《终身成长》",desc:"Carol Dweck · 成长型思维的奠基之作"},{ico:"📖",title:"《当下的力量》",desc:"埃克哈特·托利 · 正念与活在当下"},{ico:"📝",title:"工具：CBT思维记录表",desc:"每天花10分钟，用模板记录并重构负面想法"}]},{title:"习惯系统建设",tags:"习惯环 · 微习惯 · 身份认同",ico:"🔄",cq:"我如何让好行为变得自动化？",lessons:[{ico:"🔁",title:"习惯环原理",sub:"提示→渴望→行动→奖励",body:`<p>Charles Duhigg在《习惯的力量》中揭示了所有习惯的底层结构。</p><h4>习惯四要素</h4><ul><li><strong>提示（Cue）：</strong>触发习惯的信号（时间、地点、情绪、人物，或上一个行为）</li><li><strong>渴望（Craving）：</strong>你真正想要的是什么？（不是刷手机这个行为，而是放松和刺激的感觉）</li><li><strong>行动（Routine）：</strong>习惯本身的具体行为</li><li><strong>奖励（Reward）：</strong>满足渴望的结果，让大脑记住这个回路</li></ul><div class="callout">记住：你不是在消除坏习惯，而是在用好习惯替换它的位置。保持相同的提示和奖励，替换中间的行动。</div>`},{ico:"🪪",title:"身份认同型习惯",sub:"从「我想做」到「我就是这样的人」",body:`<p>James Clear在《原子习惯》中提出：最持久的习惯改变来自身份认同的改变，而不是结果目标。</p><h4>三层次改变模型</h4><ul><li><strong>结果层：</strong>"我想减掉10公斤"——大多数人从这里出发</li><li><strong>流程层：</strong>"我要去健身房"——稍好一些</li><li><strong>身份层：</strong>"我是一个注重健康的人"——最持久</li></ul><div class="callout">每次完成习惯，你都在为自己的新身份"投票"。积累足够多的"投票"后，你开始真的相信自己是那种人。</div>`},{ico:"⚡",title:"微习惯与环境设计",sub:"让开始极其容易",body:`<p>意志力是有限的资源，好的系统让你不需要依赖意志力。</p><h4>2分钟规则</h4><ul><li>任何新习惯都从"2分钟版本"开始</li><li>想读书→"拿起书翻开第一页"</li><li>想跑步→"穿上跑鞋走出门"</li></ul><h4>习惯叠加</h4><div class="callout">「当我[已有习惯]，我就[新习惯]。」<br>例：当我倒好早晨的咖啡，我就写今日三件事。</div><h4>环境设计四原则</h4><ul><li>让好习惯显而易见（把水杯放在桌上）</li><li>让好习惯更有吸引力（配合喜欢的音乐）</li><li>让好习惯容易执行（准备好所需物品）</li><li>让坏习惯增加摩擦（把手机放进抽屉）</li></ul>`}],tasks:["选定3个目标习惯，为每个设计完整的「提示→行动→奖励」","创建你的习惯叠加链，连接至少3个习惯","重新设计工作/生活环境，降低好习惯的摩擦","周末复盘：3个习惯各坚持几天？找出失败的原因"],tools:[{id:"habit-design",ico:"🏗️",title:"习惯设计工坊",desc:"为你的3个目标习惯设计完整的触发系统",type:"habit"},{id:"habit-track",ico:"✅",title:"本周习惯打卡",desc:"追踪你的习惯执行情况（周一到周日）",type:"tracker"},{id:"env-audit",ico:"🏠",title:"环境设计审计",desc:"记录你对生活环境的改造计划",type:"ta",ph:"书桌区域改造：______\n卧室改造：______\n手机/数字环境改造：______\n厨房/饮食环境改造：______"}],res:[{ico:"📖",title:"《原子习惯》",desc:"James Clear · 习惯系统建设的最佳入门书"},{ico:"📖",title:"《习惯的力量》",desc:"Charles Duhigg · 深入解析习惯的神经科学原理"},{ico:"📝",title:"工具：习惯追踪表",desc:"Notion或纸质版均可，关键是每天打卡可视化"}]},{title:"高效学习方法",tags:"费曼技巧 · 间隔重复 · 主动回忆",ico:"📚",cq:"我如何学得更快、记得更久、用得更好？",lessons:[{ico:"💡",title:"费曼学习技巧",sub:"用输出倒逼输入",body:`<p>诺贝尔物理学奖得主费曼的核心法则：如果你不能用简单的语言解释一个概念，说明你还没有真正理解它。</p><h4>费曼技巧四步</h4><ul><li><strong>① 选择概念：</strong>选一个你想学习或检验的知识点</li><li><strong>② 教给孩子：</strong>用最简单的语言，假装向10岁的孩子解释，不用专业术语</li><li><strong>③ 找到卡顿：</strong>说不清楚的地方，就是你真正不懂的地方</li><li><strong>④ 回去学习，再次简化：</strong>填补空白，直到解释顺滑</li></ul><div class="callout">为什么有效？输出比输入更能暴露理解的漏洞。读懂≠学会，能讲清楚=真的懂了。</div>`},{ico:"⏰",title:"间隔重复与主动回忆",sub:"对抗遗忘曲线的科学方法",body:`<p>Ebbinghaus发现：学习后1天不复习，会忘记70%；一周后，忘记90%。</p><h4>间隔重复</h4><ul><li>在"即将忘记"前复习，记忆效果最佳</li><li>最优间隔：1天→3天→7天→14天→30天</li><li>工具：Anki（自动计算最佳复习时间）</li></ul><h4>主动回忆 vs 被动重读</h4><ul><li>❌ 重读笔记：感觉记住了，实则没有（"流畅错觉"）</li><li>✅ 合上书，回想刚才读的内容</li><li>✅ 自己出题考自己</li><li>✅ 把内容讲给别人听</li></ul><div class="callout">测试效应：每次主动提取信息，都会加深记忆痕迹。考试本身就是最好的学习方式。</div>`},{ico:"🗺️",title:"心智模型与读书法",sub:"建立跨领域的思考框架",body:`<p>心智模型是跨领域思考的工具，帮助你快速理解新情境，做出更好的决策。</p><h4>核心心智模型</h4><ul><li><strong>第一原理：</strong>抛开类比，从基本事实重新推理</li><li><strong>逆向思维：</strong>不问"怎么成功"，先问"怎么会失败"</li><li><strong>二阶思维：</strong>不只考虑直接后果，还考虑后果的后果</li><li><strong>奥卡姆剃刀：</strong>最简单的解释通常是正确的</li></ul><h4>3层读书法</h4><ul><li><strong>略读（10分钟）：</strong>扫封面/目录/标题/结语，判断是否值得精读</li><li><strong>精读：</strong>深入阅读，做笔记，标记关键概念</li><li><strong>输出：</strong>用自己的话总结，写洞见，与其他书联结</li></ul><div class="tip">Zettelkasten卡片笔记法：每张卡片只写一个原子化的概念，用链接连接相关卡片，最终形成你自己的知识网络。</div>`}],tasks:["选一个本周学到的概念，用费曼技巧向「10岁小孩」完整解释","建立你的第一个卡片笔记盒，今天写3张概念卡","精读一章书，写出200字核心洞见","建立你自己的心智模型清单（从5个开始）"],tools:[{id:"feynman",ico:"🧒",title:"费曼练习板",desc:"选一个概念，用最简单的语言解释给10岁小孩听",type:"ta",ph:"我要解释的概念：______\n\n用最简单的语言解释（想象对方10岁，没有任何背景知识）：\n\n我解释不清楚的地方（说明还需要继续学习的）："},{id:"card-notes",ico:"🗃️",title:"概念卡片",desc:"写下今天最重要的3个新知识点",type:"ta",ph:"卡片1：概念名称\n核心含义：...\n\n卡片2：概念名称\n核心含义：...\n\n卡片3：概念名称\n核心含义：..."},{id:"book-insight",ico:"📖",title:"读书洞见记录",desc:"记录本周阅读的最重要洞见",type:"ta",ph:"书名：______\n章节：______\n\n核心论点：...\n\n我的理解和感悟：...\n\n可以应用在哪里：..."}],res:[{ico:"🎓",title:"《学会如何学习》",desc:"Barbara Oakley · Coursera最受欢迎的课程"},{ico:"📖",title:"《卡片笔记写作法》",desc:"Sönke Ahrens · Zettelkasten方法的最佳入门"},{ico:"📝",title:"工具：Anki + Obsidian",desc:"Anki做间隔重复，Obsidian做卡片笔记网络"}]},{title:"职业发展规划",tags:"技能树 · 个人品牌 · 深度工作",ico:"💼",cq:"我如何在职场创造独特价值？",lessons:[{ico:"🌳",title:"技能树与职业护城河",sub:"成为稀缺的交叉点专家",body:`<p>职场不缺努力的人，缺的是同时具备多种稀缺技能的人。</p><h4>三类技能</h4><ul><li><strong>可迁移技能：</strong>跨行业通用（沟通、分析、领导力、写作、学习能力）</li><li><strong>专业技能：</strong>特定领域的深度知识和技术</li><li><strong>元技能：</strong>提升其他技能的能力</li></ul><h4>职业护城河策略</h4><ul><li><strong>技能叠加：</strong>在两个领域的交叉点成为专家（懂技术的设计师、会写作的程序员）</li><li><strong>声誉积累：</strong>长期高质量输出，在某个领域建立信任背书</li></ul><div class="callout">Scott Adams的建议：在两个领域各达到前25%，比在一个领域达到前1%更容易，而且交叉点往往价值更大。</div>`},{ico:"🎯",title:"深度工作原理",sub:"在无干扰中创造真正的价值",body:`<p>Cal Newport将工作分为两类。</p><h4>两类工作</h4><ul><li><strong>浮浅工作：</strong>回邮件、开会、刷消息——不需要高度认知，可被替代</li><li><strong>深度工作：</strong>在无干扰状态下，将认知能力推向极限——创造真正难以复制的价值</li></ul><h4>深度工作实践</h4><ul><li>设定「深度时段」：每天固定90-120分钟，完全隔离手机和通知</li><li>培养专注力：像肌肉一样需要持续训练，从30分钟开始</li><li>测量深度：每天记录真正深度工作的小时数</li></ul><div class="tip">浮浅工作有即时反馈（消息回复了！），深度工作的回报是延迟的。你的大脑天然偏向即时奖励。</div>`},{ico:"🏷️",title:"个人品牌三要素",sub:"让正确的人以正确的方式看见你",body:`<p>个人品牌不是"表演自己"，而是让真实的价值被看见。</p><h4>三要素</h4><ul><li><strong>专长（Expertise）：</strong>你擅长什么？在哪个领域有独到见解和积累？</li><li><strong>风格（Style）：</strong>你如何表达？你的声音和视角有什么独特之处？</li><li><strong>可见度（Visibility）：</strong>通过哪些渠道让目标受众看见你？</li></ul><h4>起步策略</h4><ul><li>先深耕，再输出：在一个领域达到真实深度后再公开分享</li><li>一致性>完美：每周一篇普通文章，胜过三个月才出一篇完美文章</li></ul><div class="callout">Kevin Kelly：你只需要1000个真正欣赏你价值的铁杆粉丝——足以支撑一位创作者的生计。</div>`}],tasks:["画出你的技能雷达图，标注优势区和待补强区","本周每天设定1个「深度工作时段」（90分钟），记录完成情况","写一篇300字的个人品牌声明","列出3个你希望在行业内被记住的标签"],tools:[{id:"skill-radar",ico:"🕸️",title:"技能雷达图",desc:"对自己8个维度的技能打分，生成可视化评估",type:"skill-radar",items:["专业知识","沟通表达","分析思维","领导力","创造力","学习能力","执行力","人际关系"]},{id:"brand",ico:"🏅",title:"个人品牌声明",desc:"填写你的个人品牌三要素",type:"template",fields:[{k:"expertise",l:"我的核心专长是..."},{k:"style",l:"我独特的风格/视角是..."},{k:"audience",l:"我的目标受众是..."},{k:"tags",l:"我希望被记住的3个标签"}]},{id:"deep-work-log",ico:"⏱️",title:"深度工作日志",desc:"记录本周每天的深度工作时长和内容",type:"ta",ph:"周一：深度工作__小时 · 完成：______\n周二：深度工作__小时 · 完成：______\n周三：深度工作__小时 · 完成：______\n周四：深度工作__小时 · 完成：______\n周五：深度工作__小时 · 完成：______\n\n本周总计：__小时 · 最大障碍：______"}],res:[{ico:"📖",title:"《深度工作》",desc:"Cal Newport · 专注力是新时代最稀缺的竞争力"},{ico:"📖",title:"《优秀到不能被忽视》",desc:"Cal Newport · 不要追随激情，要积累资本"},{ico:"📝",title:"工具：技能雷达图+LinkedIn档案",desc:"可视化你的竞争优势，优化职业形象"}]},{title:"人际关系与沟通",tags:"同理心 · 边界感 · 影响力",ico:"🤝",cq:"我如何建立真实、有深度的关系？",lessons:[{ico:"💬",title:"非暴力沟通（NVC）",sub:"让沟通回归真实需求",body:`<p>Marshall Rosenberg创立的非暴力沟通框架，帮助我们从评判和防御中退出，回到真实的人际连接。</p><h4>NVC四要素</h4><ul><li><strong>观察（Observation）：</strong>"你这周迟到了三次"而非"你总是不负责任"</li><li><strong>感受（Feeling）：</strong>"我感到..."而非"你让我..."</li><li><strong>需求（Need）：</strong>说出感受背后的深层需求（安全感、尊重、连接）</li><li><strong>请求（Request）：</strong>提出具体、可行的请求，而非抽象要求</li></ul><div class="callout">NVC模板：「当我看到/听到[观察]，我感到[感受]，因为我需要[需求]。你是否愿意[具体请求]？」</div>`},{ico:"👂",title:"主动倾听与边界感",sub:"听懂言外之意，守住自己的边界",body:`<p>真正的倾听不是等待说话的机会，而是理解对方内心世界的努力。</p><h4>主动倾听5个层次</h4><ul><li>1. 忽视（完全没在听）</li><li>2. 假装在听（心在他处）</li><li>3. 选择性听（只听你想听的）</li><li>4. 专注倾听（理解话语内容）</li><li>5. 同理倾听（理解感受和需求）✨</li></ul><h4>边界感建立</h4><div class="callout">边界不是墙，是说明你在哪里结束、他人在哪里开始。<br>"我理解你的需要，但这件事我目前无法做到。"</div>`},{ico:"🌟",title:"影响力与关系资产",sub:"给予先于索取",body:`<p>真正的影响力不是操控，而是通过价值给予建立的真实信任。</p><h4>影响力六原则（Cialdini）</h4><ul><li><strong>互惠：</strong>先真诚地给予，关系自然建立</li><li><strong>喜好：</strong>人们更愿意被自己喜欢的人影响（真实、真诚是关键）</li><li><strong>权威：</strong>通过专业输出建立信任背书</li><li><strong>社会认同/承诺/稀缺：</strong>理解这些原则也能帮你避免被不当影响</li></ul><h4>关系资产维护</h4><ul><li>建立「关系CRM」：定期联系重要的人，不只在需要时才出现</li><li>深度>广度：10段深度关系胜过100个点头之交</li></ul>`}],tasks:["本周每天练习「同理倾听」——不打断，先理解再回应","找出1个你一直回避的边界，本周尝试清晰表达","用NVC框架重写一段你处理得不好的对话","主动联系1位久未联络的重要人士，真诚关心"],tools:[{id:"nvc-practice",ico:"💭",title:"NVC对话练习",desc:"用非暴力沟通框架重构一段困难的对话",type:"nvc"},{id:"boundary",ico:"🛡️",title:"边界声明练习",desc:"写出你需要设立的一个边界，以及如何表达它",type:"ta",ph:"我需要设立的边界：______\n\n情境：______\n\n传统方式（容易引发冲突）：______\n\nNVC方式（观察+感受+需求+请求）：______"},{id:"rel-map",ico:"🗺️",title:"关系地图",desc:"列出你的核心关系圈，以及维护计划",type:"ta",ph:"核心圈（3-5人，最亲密的关系）：\n______\n\n重要圈（10-20人，定期维护）：\n______\n\n本月我要主动联系的人：______"}],res:[{ico:"📖",title:"《非暴力沟通》",desc:"Marshall Rosenberg · 改变沟通方式的经典之作"},{ico:"📖",title:"《如何赢得朋友与影响他人》",desc:"Dale Carnegie · 人际关系的永恒经典"},{ico:"📝",title:"工具：NVC对话卡+关系CRM",desc:"Notion模板记录重要关系，设置定期提醒"}]},{title:"身心健康管理",tags:"睡眠 · 运动 · 冥想 · 能量管理",ico:"🌿",cq:"我如何让身体成为成长的底层支撑？",lessons:[{ico:"🌙",title:"睡眠优化",sub:"最被低估的竞争力",body:`<p>Matthew Walker的研究明确表明：睡眠不足7小时的人，认知表现、免疫系统、情绪调节均显著下降。</p><h4>昼夜节律</h4><ul><li>固定睡眠和起床时间——即使周末也不例外</li><li>早晨接触自然光（15-30分钟），帮助锚定生物钟</li></ul><h4>睡眠卫生清单</h4><ul><li>睡前1小时：关掉强光，减少屏幕蓝光</li><li>卧室环境：凉爽（18-20°C）、黑暗、安静</li><li>避免：睡前饮酒、下午2点后的咖啡因、睡前大量进食</li></ul><div class="callout">本周目标：固定23:00前上床，固定起床时间，连续7天不破坏。</div>`},{ico:"🏃",title:"运动与大脑",sub:"天然的抗抑郁药和大脑增强剂",body:`<p>来自《运动改造大脑》的核心发现：运动不只是健身，它直接影响你的大脑结构和功能。</p><h4>运动对大脑的影响</h4><ul><li>促进BDNF分泌，增强记忆和学习能力</li><li>减少焦虑和抑郁（效果相当于轻中度抗抑郁药）</li><li>提升专注力，促进海马体生长</li></ul><h4>最低有效剂量</h4><p>每周3-5次、每次20-30分钟中等强度有氧运动即可见效。</p><div class="tip">最好的运动时间：是你能坚持做的时间。</div>`},{ico:"🧘",title:"冥想与能量管理",sub:"在纷扰中找到内心的锚点",body:`<p>冥想不是让大脑变空白，而是训练你观察自己思维的能力。</p><h4>冥想入门</h4><ul><li><strong>正念冥想：</strong>关注当下，不评判地觉察思维和感受</li><li><strong>专注冥想：</strong>将注意力集中在一个对象（呼吸、身体感受）</li><li>起步：每天5-10分钟，关键是"注意到走神并温和地拉回来"</li></ul><h4>能量管理四维度</h4><ul><li><strong>体力能量：</strong>睡眠、运动、饮食、呼吸</li><li><strong>情绪能量：</strong>正向情绪（感恩、爱、好奇心）</li><li><strong>思维能量：</strong>专注力、创造力、乐观</li><li><strong>精神能量：</strong>目标、价值观、意义感</li></ul><div class="callout">关键洞见：不是管理时间，而是管理能量。满状态工作2小时>低能量工作8小时。</div>`}],tasks:["本周固定23:00前上床，记录每天睡眠质量（1-10分）","每天进行20分钟运动（步行/跑步/居家训练均可）","每天早晨冥想10分钟，记录冥想感受","设定手机「无屏时间」，晚饭后到睡前不刷手机"],tools:[{id:"sleep-log",ico:"🌙",title:"睡眠日志",desc:"记录本周每天的入睡/起床时间和睡眠质量",type:"sleep"},{id:"energy-check",ico:"⚡",title:"能量四维日志",desc:"评估今天四个维度的能量状态",type:"sliders",items:["体力能量","情绪能量","思维专注度","意义感与精神"]},{id:"meditation-log",ico:"🧘",title:"冥想记录",desc:"记录本周冥想情况和感受",type:"ta",ph:"今天冥想了__分钟\n主要感受：______\n注意到的干扰思维：______\n冥想后的变化：______"}],res:[{ico:"📖",title:"《为什么要睡觉》",desc:"Matthew Walker · 关于睡眠的最全面科学综述"},{ico:"📖",title:"《运动改造大脑》",desc:"John Ratey · 揭示运动与大脑的深刻联系"},{ico:"📝",title:"工具：Headspace / Calm",desc:"冥想入门的最佳App，有中文引导"}]},{title:"整合与系统升级",tags:"复盘 · 人生系统 · 长期主义",ico:"🌟",cq:"我如何把一切串联成属于我的人生操作系统？",lessons:[{ico:"🔄",title:"个人复盘框架",sub:"经历不会让人成长，反思才会",body:`<p>复盘是成长的加速器。没有反思的经历只是重复，有了复盘才是真正的学习。</p><h4>三维度复盘框架</h4><ul><li><strong>过去：</strong>最重要的成就是什么？最大的失误是什么？从中学到了什么？</li><li><strong>现在：</strong>当前生活各维度的真实状态（用人生轮盘重新打分）</li><li><strong>未来：</strong>接下来最重要的3个目标？什么需要开始/停止/继续？</li></ul><h4>不同时间维度</h4><ul><li><strong>每日（5分钟）：</strong>今天最重要的事做了吗？明天Top 3是什么？</li><li><strong>每周（20分钟）：</strong>完成了什么？可以更好的是什么？</li><li><strong>每季/年（2-3小时）：</strong>三维度完整复盘，重新设定OKR</li></ul><div class="callout">军事AAR（死后复盘）：不是追责，而是真正弄清楚发生了什么、为什么、以及下次怎么做得更好。</div>`},{ico:"⚙️",title:"人生操作系统设计",sub:"把8周的学习整合成永久运转的系统",body:`<p>一个好的人生操作系统，让成长不再依赖意志力，而是依赖系统本身的自动运行。</p><h4>四个核心模块</h4><ul><li><strong>价值观OS：</strong>5个核心价值观→所有决策的判断标准</li><li><strong>习惯OS：</strong>每日例程（晨间/晚间）+周习惯系统</li><li><strong>目标OS：</strong>3年愿景→年度OKR→季度计划→每周Top 3</li><li><strong>关系OS：</strong>核心圈（3-5人）+定期联系的重要人（10-20人）</li></ul><div class="callout">成长飞轮：健康支撑学习→学习提升能力→能力增加成就感→成就感带来精力→精力支撑健康。任何一个轮子转动，都会带动其他轮子。</div>`}],tasks:["完成8周全面复盘：6个维度打分，写出最大收获","写出你的「个人宪法」：5-10条核心生活原则","制定90天行动计划：3个目标+每周里程碑","与一位朋友分享你的成长故事，建立相互问责机制"],tools:[{id:"final-review",ico:"📊",title:"8周全面复盘",desc:"对这8周成长的系统回顾与评分",type:"review",dims:["自我认知","心态情绪","习惯系统","学习能力","职业发展","人际关系","身心健康","整合复盘"]},{id:"constitution",ico:"📜",title:"个人宪法",desc:"写下你的人生核心原则（5-10条）",type:"ta",ph:"我的个人宪法\n\n原则1：______\n原则2：______\n原则3：______\n原则4：______\n原则5：______"},{id:"plan90",ico:"🗓️",title:"90天行动计划",desc:"制定接下来90天的具体计划",type:"ta",ph:"目标1：______\n里程碑：Week 4完成______，Week 8完成______，Week 12完成______\n\n目标2：______\n里程碑：...\n\n目标3：______"}],res:[{ico:"📖",title:"《高效能人士的七个习惯》",desc:"Stephen Covey · 个人领导力与人生整合的经典"},{ico:"📖",title:"《纳瓦尔宝典》",desc:"Naval Ravikant · 关于财富、幸福和智慧的长期主义洞见"},{ico:"📝",title:"工具：年度复盘模板+90天计划表",desc:"Notion模板系统化管理你的成长轨迹"}]}];
+
+const RAT_DIMS=["知识掌握度","实践完成率","生活改变感","整体投入度"];
+const RAT_SUBS=["对本周核心概念的理解与掌握","实际完成了多少比例的实践任务","是否感受到了真实的生活改变","投入的时间、专注度和精力"];
+
+/* ── STATE ── */
+let S={tasks:{},notes:{},toolData:{},journals:[],ratings:{}};
+const _sv=()=>{try{localStorage.setItem('gca4',JSON.stringify(S));}catch(e){}};
+try{const d=localStorage.getItem('gca4');if(d)Object.assign(S,JSON.parse(d));}catch(e){}
+
+/* ── ROUTING ── */
+let curWk=null, curTab='theory', jFilter='all', rWk=0, jMW=0;
+
+function go(id){
+  // Hide all screens
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
+  // Hide week tabs
+  document.getElementById('week-tabs').classList.remove('show');
+  // Update top bar
+  const back=document.getElementById('tb-back');
+  const title=document.getElementById('tb-title');
+  const badge=document.getElementById('tb-badge');
+  back.classList.remove('show'); badge.classList.remove('show');
+  // Update nav highlights
+  document.querySelectorAll('.bn-btn,.sd-row').forEach(b=>b.classList.remove('on'));
+
+  if(id==='dash'){
+    document.getElementById('sc-dash').classList.add('on');
+    document.getElementById('bn-dash').classList.add('on');
+    document.getElementById('sdr-dash')?.classList.add('on');
+    title.textContent='🌱 全方位成长课程';
+    renderDash();
+  } else if(id==='learn'){
+    document.getElementById('sc-learn').classList.add('on');
+    document.getElementById('bn-learn').classList.add('on');
+    document.getElementById('sdr-learn')?.classList.add('on');
+    title.textContent='📖 课程学习';
+    renderLearnList();
+  } else if(id==='journal'){
+    document.getElementById('sc-journal').classList.add('on');
+    document.getElementById('bn-journal').classList.add('on');
+    document.getElementById('sdr-journal')?.classList.add('on');
+    title.textContent='✏️ 成长日记';
+    renderJournal();
+  } else if(id==='rating'){
+    document.getElementById('sc-rating').classList.add('on');
+    document.getElementById('bn-rating').classList.add('on');
+    document.getElementById('sdr-rating')?.classList.add('on');
+    title.textContent='⭐ 每周自评';
+    renderRating();
+  } else if(id.startsWith('wk-')){
+    const wi=parseInt(id.replace('wk-',''));
+    curWk=wi; curTab='theory';
+    document.getElementById('sc-week').classList.add('on');
+    document.getElementById('bn-learn').classList.add('on');
+    document.getElementById('week-tabs').classList.add('show');
+    // Clear pane render caches so new week renders fresh
+    ['theory','tasks','tools','res'].forEach(name=>{
+      const pane=document.getElementById('pane-'+name);
+      if(pane){pane.innerHTML='';delete pane.dataset.wi;}
+    });
+    // Reset tab buttons
+    ['theory','tasks','tools','res'].forEach(t=>{
+      document.getElementById('wt-'+t).classList.toggle('on',t==='theory');
+    });
+    // Reset tab panes
+    document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('on'));
+    document.getElementById('pane-theory').classList.add('on');
+    // Set topbar
+    title.textContent=`W${wi+1} ${WKS[wi].title}`;
+    badge.textContent=`Week ${wi+1}`;
+    back.classList.add('show'); badge.classList.add('show');
+    // Highlight sidebar
+    document.getElementById(`sdr-wk-${wi}`)?.classList.add('on');
+    // Render
+    renderWeekCore(wi);
+    renderTheory(wi);
+  }
+  // Scroll to top
+  document.getElementById('content').scrollTop=0;
+}
+
+function backFromWeek(){go('learn');}
+
+function switchTab(tab){
+  if(curWk===null) return;
+  curTab=tab;
+  ['theory','tasks','tools','res'].forEach(t=>{
+    document.getElementById('wt-'+t).classList.toggle('on',t===tab);
+  });
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('on'));
+  document.getElementById('pane-'+tab).classList.add('on');
+  if(tab==='theory') renderTheory(curWk);
+  if(tab==='tasks') renderTasks(curWk);
+  if(tab==='tools') renderToolsTab(curWk);
+  if(tab==='res') renderRes(curWk);
+  document.getElementById('content').scrollTop=0;
+}
+
+/* ── WEEK CORE Q ── */
+function renderWeekCore(wi){
+  document.getElementById('wk-coreq').textContent='🎯 '+WKS[wi].cq;
+}
+
+/* ── THEORY ── */
+function renderTheory(wi){
+  const cont=document.getElementById('pane-theory');
+  if(cont.dataset.wi==wi) return;
+  const w=WKS[wi];
+  cont.innerHTML=w.lessons.map((l,li)=>{
+    const nk=`ln-${wi}-${li}`, saved=S.notes[nk]||'';
+    return`<div class="lesson">
+      <div class="lesson-hd" onclick="toggleLesson(${wi},${li})">
+        <div class="l-ico">${l.ico}</div>
+        <div class="l-info"><div class="l-title">${l.title}</div><div class="l-sub">${l.sub}</div></div>
+        <div class="l-chev" id="lc-${wi}-${li}">›</div>
+      </div>
+      <div class="lesson-bd" id="lb-${wi}-${li}">
+        <div class="lesson-text">${l.body}</div>
+        <div class="note-area">
+          <div class="note-lbl">📝 我的笔记与心得</div>
+          <textarea rows="3" placeholder="写下你的理解、疑问或感悟..." id="lnt-${wi}-${li}">${saved}</textarea>
+          <div class="note-row">
+            <button class="btn-sv" onclick="saveNote('${nk}','lnt-${wi}-${li}','lnb-${wi}-${li}')">保存笔记</button>
+            <span class="saved" id="lnb-${wi}-${li}">✓ 已保存</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  cont.dataset.wi=wi;
+}
+
+function toggleLesson(wi,li){
+  const bd=document.getElementById(`lb-${wi}-${li}`);
+  const ch=document.getElementById(`lc-${wi}-${li}`);
+  const open=bd.classList.toggle('open');
+  ch.style.transform=open?'rotate(90deg)':'';
+}
+
+function saveNote(key,tid,bid){
+  const el=document.getElementById(tid); if(!el) return;
+  S.notes[key]=el.value; _sv();
+  const b=document.getElementById(bid);
+  if(b){b.classList.add('show');setTimeout(()=>b.classList.remove('show'),2000);}
+  updateStats();
+}
+
+/* ── TASKS ── */
+function renderTasks(wi){
+  const cont=document.getElementById('pane-tasks');
+  const w=WKS[wi];
+  const done=w.tasks.filter((_,j)=>S.tasks[`${wi}-${j}`]).length;
+  const pct=Math.round(done/w.tasks.length*100);
+  cont.innerHTML=`<div class="task-prog-row">
+    <div class="task-prog-bar"><div class="task-prog-fill" id="tpf-${wi}" style="width:${pct}%"></div></div>
+    <div class="task-prog-txt" id="tpt-${wi}">${done}/${w.tasks.length}</div>
+  </div>`+w.tasks.map((t,j)=>{
+    const isDone=!!S.tasks[`${wi}-${j}`],tnk=`tn-${wi}-${j}`,tn=S.notes[tnk]||'';
+    return`<div class="task-item ${isDone?'done':''}" id="titem-${wi}-${j}">
+      <div class="task-main" onclick="toggleTask(${wi},${j})">
+        <div class="tcb ${isDone?'done':''}" id="tcb-${wi}-${j}">${isDone?'✓':''}</div>
+        <div class="task-txt">${j+1}. ${t}</div>
+      </div>
+      <div class="tnote-toggle">
+        <button class="tnote-btn" id="tnbtn-${wi}-${j}" onclick="toggleTNote(${wi},${j})">
+          ${tn?'📝 查看执行笔记':'+ 添加执行笔记'}
+        </button>
+      </div>
+      <div class="tnote-zone ${tn?'open':''}" id="tnz-${wi}-${j}">
+        <textarea rows="3" placeholder="记录执行情况、遇到的困难、心得..." id="tnta-${wi}-${j}">${tn}</textarea>
+        <div class="note-row" style="margin-top:8px">
+          <button class="btn-sv" onclick="saveNote('${tnk}','tnta-${wi}-${j}','tnsb-${wi}-${j}')">保存</button>
+          <span class="saved" id="tnsb-${wi}-${j}">✓ 已保存</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleTask(wi,j){
+  const k=`${wi}-${j}`; S.tasks[k]=!S.tasks[k]; _sv();
+  renderTasks(wi); updateStats(); updateSdBars();
+}
+
+function toggleTNote(wi,j){
+  const z=document.getElementById(`tnz-${wi}-${j}`);
+  const b=document.getElementById(`tnbtn-${wi}-${j}`);
+  const open=z.classList.toggle('open');
+  const tn=S.notes[`tn-${wi}-${j}`]||'';
+  b.textContent=open?'- 收起笔记':(tn?'📝 查看执行笔记':'+ 添加执行笔记');
+}
+
+/* ── TOOLS ── */
+function renderToolsTab(wi){
+  const cont=document.getElementById('pane-tools');
+  if(cont.dataset.wi==wi) return;
+  cont.innerHTML=WKS[wi].tools.map(tool=>buildToolCard(wi,tool)).join('');
+  cont.dataset.wi=wi;
+}
+
+function buildToolCard(wi,tool){
+  const tKey=`t${wi}-${tool.id}`, saved=S.toolData[tKey];
+  const foot=`<div class="tool-foot">
+    <button class="btn-sv" onclick="saveTool('${tKey}',${wi},'${tool.id}')">保存</button>
+    <span class="saved" id="ts-${tKey}">✓ 已保存</span>
+  </div>`;
+  let body='';
+  if(tool.type==='chips'){
+    const sel=saved?JSON.parse(saved):[];
+    body=`<div class="chip-wrap" id="cw-${tKey}">${tool.opts.map(o=>`<span class="chip${sel.includes(o)?' sel':''}" onclick="this.classList.toggle('sel')">${o}</span>`).join('')}</div>`;
+  } else if(tool.type==='sliders'){
+    const vals=saved?JSON.parse(saved):{};
+    body=tool.items.map((item,i)=>`<div class="sl-row">
+      <span class="sl-lbl">${item}</span>
+      <input type="range" min="1" max="10" value="${vals[i]||5}" oninput="document.getElementById('slv-${tKey}-${i}').textContent=this.value" id="sli-${tKey}-${i}">
+      <span class="sl-val" id="slv-${tKey}-${i}">${vals[i]||5}</span>
+    </div>`).join('');
+  } else if(tool.type==='template'){
+    const vals=saved?JSON.parse(saved):{};
+    body=tool.fields.map(f=>`<div class="fg">
+      <span class="field-lbl">${f.l}</span>
+      <textarea rows="2" id="tf-${tKey}-${f.k}">${vals[f.k]||''}</textarea>
+    </div>`).join('');
+  } else if(tool.type==='ta'){
+    body=`<div class="fg"><textarea rows="6" placeholder="${tool.ph||''}" id="ta-${tKey}">${saved||''}</textarea></div>`;
+  } else if(tool.type==='cbt'){
+    const v=saved?JSON.parse(saved):{};
+    const fs=[['event','发生了什么？（客观描述）'],['emotion','情绪反应？（情绪词+强度0-10）'],['thought','脑海中的自动想法？'],['distort','属于哪种认知扭曲？'],['reframe','更平衡的想法？（基于证据）']];
+    body=`<div class="cbt-grid">${fs.map(([k,l])=>`<div class="fg"><span class="field-lbl">${l}</span><textarea rows="2" id="cbt-${tKey}-${k}">${v[k]||''}</textarea></div>`).join('')}</div>`;
+  } else if(tool.type==='habit'){
+    const v=saved?JSON.parse(saved):{};
+    body=[0,1,2].map(i=>`<div class="habit-blk">
+      <div class="habit-blk-hd">🎯 习惯 ${i+1}</div>
+      ${[['cue','提示（何时/何地触发？）'],['action','行动（具体行为？）'],['reward','奖励（即时满足？）'],['identity','身份认同：我是一个___的人']].map(([k,l])=>`<div class="fg">
+        <span class="field-lbl">${l}</span>
+        <input type="text" placeholder="${l}" id="hb-${tKey}-${i}-${k}" value="${(v[i]&&v[i][k])||''}">
+      </div>`).join('')}
+    </div>`).join('');
+  } else if(tool.type==='tracker'){
+    const v=saved?JSON.parse(saved):{habits:[],checks:{}};
+    body=[0,1,2].map(i=>`<div class="tr-row">
+      <input type="text" placeholder="习惯 ${i+1} 名称..." id="tr-${tKey}-${i}" value="${(v.habits&&v.habits[i])||''}">
+      <div class="day-btns">${['一','二','三','四','五','六','日'].map((d,di)=>`<button class="day-btn${(v.checks&&v.checks[i]&&v.checks[i][di])?' on':''}" id="db-${tKey}-${i}-${di}" onclick="this.classList.toggle('on')">${d}</button>`).join('')}</div>
+    </div>`).join('');
+  } else if(tool.type==='nvc'){
+    const v=saved?JSON.parse(saved):{};
+    body=`<div class="fg"><span class="field-lbl">原来的对话</span><textarea rows="2" id="nvc-orig-${tKey}">${v.orig||''}</textarea></div>
+    <div class="nvc-grid">
+      <div class="fg"><span class="field-lbl">👁 观察（客观事实）</span><textarea rows="2" id="nvc-obs-${tKey}">${v.obs||''}</textarea></div>
+      <div class="fg"><span class="field-lbl">❤️ 感受（情绪）</span><textarea rows="2" id="nvc-feel-${tKey}">${v.feel||''}</textarea></div>
+      <div class="fg"><span class="field-lbl">🌱 需求（深层）</span><textarea rows="2" id="nvc-need-${tKey}">${v.need||''}</textarea></div>
+      <div class="fg"><span class="field-lbl">🤝 请求（具体）</span><textarea rows="2" id="nvc-req-${tKey}">${v.req||''}</textarea></div>
+    </div>`;
+  } else if(tool.type==='sleep'){
+    const v=saved?JSON.parse(saved):{};
+    body=['一','二','三','四','五','六','日'].map((d,di)=>`<div class="sleep-row">
+      <span class="sleep-day">周${d}</span>
+      <input type="time" id="sl-in-${tKey}-${di}" value="${(v[di]&&v[di].in)||'23:00'}">
+      <span style="font-size:11px;color:var(--text3);flex-shrink:0">→起</span>
+      <input type="time" id="sl-out-${tKey}-${di}" value="${(v[di]&&v[di].out)||'07:00'}">
+      <input type="range" min="1" max="10" value="${(v[di]&&v[di].q)||7}" oninput="document.getElementById('slq-${tKey}-${di}').textContent=this.value" style="width:48px;margin:0 4px">
+      <span class="sleep-q" id="slq-${tKey}-${di}">${(v[di]&&v[di].q)||7}</span>
+    </div>`).join('');
+  } else if(tool.type==='skill-radar'){
+    const vals=saved?JSON.parse(saved):{};
+    body=`${tool.items.map((item,i)=>`<div class="sl-row">
+      <span class="sl-lbl" style="min-width:64px">${item}</span>
+      <input type="range" min="1" max="10" value="${vals[i]||5}" oninput="document.getElementById('skrv-${tKey}-${i}').textContent=this.value;drawRadar('${tKey}',${tool.items.length})" id="skri-${tKey}-${i}">
+      <span class="sl-val" id="skrv-${tKey}-${i}">${vals[i]||5}</span>
+    </div>`).join('')}
+    <div id="skrd-${tKey}" style="text-align:center;margin-top:12px"></div>`;
+  } else if(tool.type==='review'){
+    const v=saved?JSON.parse(saved):{};
+    body=`<div style="margin-bottom:12px">${tool.dims.map((d,di)=>`<div class="rv-row">
+      <span class="rv-dim">${d}</span>
+      <input type="range" min="1" max="10" value="${(v.scores&&v.scores[di])||5}" oninput="document.getElementById('rv-${tKey}-${di}').textContent=this.value">
+      <span class="rv-val" id="rv-${tKey}-${di}">${(v.scores&&v.scores[di])||5}</span>
+    </div>`).join('')}</div>
+    <div class="fg"><span class="field-lbl">8周最大收获</span><textarea rows="3" id="rv-gain-${tKey}">${v.gain||''}</textarea></div>
+    <div class="fg"><span class="field-lbl">接下来90天最重要的3件事</span><textarea rows="3" id="rv-next-${tKey}">${v.next||''}</textarea></div>`;
+  } else {
+    body=`<div class="fg"><textarea rows="4" id="ta-${tKey}">${saved||''}</textarea></div>`;
+  }
+  return`<div class="tool-card">
+    <div class="tool-hd"><span class="tool-ico">${tool.ico}</span><div class="tool-hd-info"><h4>${tool.title}</h4><p>${tool.desc}</p></div></div>
+    <div class="tool-body">${body}${foot}</div>
+  </div>`;
+}
+
+function saveTool(tKey,wi,tid){
+  const tool=WKS[wi].tools.find(t=>t.id===tid);
+  if(!tool){const ta=document.getElementById('ta-'+tKey);if(ta)S.toolData[tKey]=ta.value;}
+  else if(tool.type==='chips'){
+    const cw=document.getElementById('cw-'+tKey),sel=[];
+    if(cw)cw.querySelectorAll('.chip.sel').forEach(c=>sel.push(c.textContent));
+    S.toolData[tKey]=JSON.stringify(sel);
+  } else if(tool.type==='sliders'){
+    const vals={};tool.items.forEach((_,i)=>{const el=document.getElementById(`sli-${tKey}-${i}`);if(el)vals[i]=+el.value;});
+    S.toolData[tKey]=JSON.stringify(vals);
+  } else if(tool.type==='skill-radar'){
+    const vals={};tool.items.forEach((_,i)=>{const el=document.getElementById(`skri-${tKey}-${i}`);if(el)vals[i]=+el.value;});
+    S.toolData[tKey]=JSON.stringify(vals);
+    drawRadar(tKey,tool.items.length);
+  } else if(tool.type==='template'){
+    const vals={};tool.fields.forEach(f=>{const el=document.getElementById(`tf-${tKey}-${f.k}`);if(el)vals[f.k]=el.value;});
+    S.toolData[tKey]=JSON.stringify(vals);
+  } else if(tool.type==='ta'){
+    const ta=document.getElementById('ta-'+tKey);if(ta)S.toolData[tKey]=ta.value;
+  } else if(tool.type==='cbt'){
+    const v={};['event','emotion','thought','distort','reframe'].forEach(k=>{const el=document.getElementById(`cbt-${tKey}-${k}`);if(el)v[k]=el.value;});
+    S.toolData[tKey]=JSON.stringify(v);
+  } else if(tool.type==='habit'){
+    const v={};
+    for(let i=0;i<3;i++){v[i]={};['cue','action','reward','identity'].forEach(k=>{const el=document.getElementById(`hb-${tKey}-${i}-${k}`);if(el)v[i][k]=el.value;});}
+    S.toolData[tKey]=JSON.stringify(v);
+  } else if(tool.type==='tracker'){
+    const habits=[],checks={};
+    for(let i=0;i<3;i++){const el=document.getElementById(`tr-${tKey}-${i}`);habits.push(el?el.value:'');checks[i]={};for(let d=0;d<7;d++){const b=document.getElementById(`db-${tKey}-${i}-${d}`);checks[i][d]=b&&b.classList.contains('on');}}
+    S.toolData[tKey]=JSON.stringify({habits,checks});
+  } else if(tool.type==='nvc'){
+    const v={};['orig','obs','feel','need','req'].forEach(k=>{const el=document.getElementById(`nvc-${k}-${tKey}`);if(el)v[k]=el.value;});
+    S.toolData[tKey]=JSON.stringify(v);
+  } else if(tool.type==='sleep'){
+    const v={};
+    for(let i=0;i<7;i++){const a=document.getElementById(`sl-in-${tKey}-${i}`),b=document.getElementById(`sl-out-${tKey}-${i}`),q=document.getElementById(`slq-${tKey}-${i}`);v[i]={in:a?a.value:'23:00',out:b?b.value:'07:00',q:q?+q.textContent:7};}
+    S.toolData[tKey]=JSON.stringify(v);
+  } else if(tool.type==='review'){
+    const scores={};tool.dims.forEach((_,di)=>{const el=document.getElementById(`rv-${tKey}-${di}`);if(el)scores[di]=+el.textContent;});
+    const g=document.getElementById(`rv-gain-${tKey}`),n=document.getElementById(`rv-next-${tKey}`);
+    S.toolData[tKey]=JSON.stringify({scores,gain:g?g.value:'',next:n?n.value:''});
+  }
+  _sv();
+  const b=document.getElementById('ts-'+tKey);
+  if(b){b.classList.add('show');setTimeout(()=>b.classList.remove('show'),2000);}
+  updateStats();
+}
+
+function drawRadar(tKey,cnt){
+  const wrap=document.getElementById('skrd-'+tKey);if(!wrap)return;
+  const n=+cnt,scores=[];
+  for(let i=0;i<n;i++){const el=document.getElementById(`skri-${tKey}-${i}`);scores.push(el?+el.value:5);}
+  // Get labels
+  let labels=Array.from({length:n},(_,i)=>`维度${i+1}`);
+  for(const w of WKS){for(const t of w.tools){if(t.type==='skill-radar'&&t.items){labels=t.items;break;}}}
+  const cx=110,cy=110,R=72,step=Math.PI*2/n;
+  const xy=(i,r)=>[cx+r*Math.sin(i*step),cy-r*Math.cos(i*step)];
+  let h='';
+  [2,4,6,8,10].forEach(v=>{const pts=scores.map((_,i)=>xy(i,R*v/10).join(',')).join(' ');h+=`<polygon points="${pts}" fill="none" stroke="rgba(128,128,128,0.15)" stroke-width="0.5"/>`;});
+  for(let i=0;i<n;i++){const[x,y]=xy(i,R);h+=`<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="rgba(128,128,128,0.15)" stroke-width="0.5"/>`;}
+  const dpts=scores.map((s,i)=>xy(i,R*s/10).join(',')).join(' ');
+  h+=`<polygon points="${dpts}" fill="var(--accL)" fill-opacity=".7" stroke="var(--acc)" stroke-width="1.5"/>`;
+  scores.forEach((s,i)=>{const[x,y]=xy(i,R*s/10);h+=`<circle cx="${x}" cy="${y}" r="3" fill="var(--acc)"/>`;});
+  labels.forEach((l,i)=>{const[x,y]=xy(i,R+20);h+=`<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="middle" font-size="9" fill="var(--text2)">${l}</text>`;});
+  wrap.innerHTML=`<svg width="220" height="220" viewBox="0 0 220 220" style="max-width:100%">${h}</svg>`;
+}
+
+/* ── RESOURCES ── */
+function renderRes(wi){
+  const cont=document.getElementById('pane-res');
+  if(cont.dataset.wi==wi) return;
+  cont.innerHTML=`<div class="res-list">${WKS[wi].res.map(r=>`<div class="res-item"><span class="res-ico">${r.ico}</span><div><div class="res-title">${r.title}</div><div class="res-desc">${r.desc}</div></div></div>`).join('')}</div>`;
+  cont.dataset.wi=wi;
+}
+
+/* ── DASHBOARD ── */
+function renderDash(){
+  updateStats();
+  document.getElementById('dash-wks').innerHTML=WKS.map((w,i)=>{
+    const done=w.tasks.filter((_,j)=>S.tasks[`${i}-${j}`]).length,pct=Math.round(done/w.tasks.length*100),full=done===w.tasks.length;
+    return`<div class="wk-card" onclick="go('wk-${i}')">
+      <div class="wk-badge ${full?'done':''}">${full?'✓':i+1}</div>
+      <div class="wk-info">
+        <div class="wk-name">${w.ico} ${w.title}</div>
+        <div class="wk-tags">${w.tags}</div>
+        <div class="wk-prog"><div class="wk-bar"><div class="wk-bar-fill" style="width:${pct}%"></div></div><span class="wk-pct">${pct}%</span></div>
+      </div>
+      <div class="wk-arr">›</div>
+    </div>`;
+  }).join('');
+  updateSdBars();
+}
+
+function renderLearnList(){
+  document.getElementById('learn-wks').innerHTML=WKS.map((w,i)=>{
+    const done=w.tasks.filter((_,j)=>S.tasks[`${i}-${j}`]).length,pct=Math.round(done/w.tasks.length*100),full=done===w.tasks.length;
+    return`<div class="wk-card" onclick="go('wk-${i}')">
+      <div class="wk-badge ${full?'done':''}">${full?'✓':i+1}</div>
+      <div class="wk-info">
+        <div class="wk-name">${w.ico} ${w.title}</div>
+        <div class="wk-tags">${w.tags}</div>
+        <div class="wk-prog"><div class="wk-bar"><div class="wk-bar-fill" style="width:${pct}%"></div></div><span class="wk-pct">${pct}%</span></div>
+      </div>
+      <div class="wk-arr">›</div>
+    </div>`;
+  }).join('');
+}
+
+function updateStats(){
+  const allT=WKS.reduce((s,w)=>s+w.tasks.length,0);
+  const doneT=Object.values(S.tasks).filter(Boolean).length;
+  const notesCnt=Object.keys(S.notes).filter(k=>S.notes[k]&&S.notes[k].trim()).length;
+  const pct=allT?Math.round(doneT/allT*100):0;
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  set('dp-pct',pct+'%'); set('dp-sub',`${doneT} / ${allT} 个任务已完成`);
+  const bar=document.getElementById('dp-bar');if(bar)bar.style.width=pct+'%';
+  set('st-t',doneT); set('st-n',notesCnt); set('st-j',S.journals.length); set('st-s',calcStreak());
+}
+
+function updateSdBars(){
+  WKS.forEach((w,i)=>{
+    const done=w.tasks.filter((_,j)=>S.tasks[`${i}-${j}`]).length;
+    const pct=Math.round(done/w.tasks.length*100);
+    const b=document.getElementById(`sdb-${i}`);if(b)b.style.width=pct+'%';
+    const row=document.getElementById(`sdr-wk-${i}`);
+    if(row) row.classList.toggle('wkdone',done===w.tasks.length);
+  });
+}
+
+function calcStreak(){
+  if(!S.journals.length)return 0;
+  const dates=[...new Set(S.journals.map(j=>j.date))].sort().reverse();
+  const today=new Date().toISOString().slice(0,10);
+  const yest=new Date(Date.now()-86400000).toISOString().slice(0,10);
+  if(dates[0]!==today&&dates[0]!==yest)return 0;
+  let s=1;for(let i=1;i<dates.length;i++){if(new Date(dates[i-1])-new Date(dates[i])===86400000)s++;else break;}
+  return s;
+}
+
+/* ── JOURNAL ── */
+function renderJournal(){
+  const fr=document.getElementById('jnl-filter');
+  fr.innerHTML=`<button class="f-btn${jFilter==='all'?' on':''}" onclick="setJF('all')">全部</button>`+
+    WKS.map((_,i)=>`<button class="f-btn${jFilter===i?' on':''}" onclick="setJF(${i})">W${i+1}</button>`).join('');
+  const list=document.getElementById('jnl-list');
+  let entries=[...S.journals].reverse();
+  if(jFilter!=='all') entries=entries.filter(j=>j.week===jFilter);
+  if(!entries.length){
+    list.innerHTML=`<div class="empty"><div class="empty-ico">📓</div><p>还没有日记条目</p><p style="margin-top:4px;font-size:13px">点击上方按钮写今天的日记</p></div>`;return;
+  }
+  list.innerHTML=entries.map((j,idx)=>`<div class="jnl-entry">
+    <div class="jnl-meta">
+      <span class="jnl-date">${j.date}</span>
+      <span style="display:flex;align-items:center;gap:8px">
+        <span class="jnl-tag">W${j.week+1} · ${WKS[j.week].title.slice(0,6)}</span>
+        <button class="jnl-del" onclick="delJnl(${S.journals.length-1-idx})">×</button>
+      </span>
+    </div>
+    ${j.insight?`<div class="jnl-q">💡 收获与洞见</div><div class="jnl-a">${j.insight}</div>`:''}
+    ${j.values?`<div class="jnl-q">🧭 价值观践行</div><div class="jnl-a">${j.values}</div>`:''}
+    ${j.tomorrow?`<div class="jnl-q">🎯 明天的一件事</div><div class="jnl-a">${j.tomorrow}</div>`:''}
+  </div>`).join('');
+}
+function setJF(v){jFilter=v;renderJournal();}
+function delJnl(i){if(confirm('确认删除？')){S.journals.splice(i,1);_sv();renderJournal();updateStats();}}
+function openJModal(){
+  jMW=0;
+  document.getElementById('mw-row').innerHTML=WKS.map((_,i)=>`<button class="mw-btn${i===0?' on':''}" onclick="setJMW(${i})">W${i+1}</button>`).join('');
+  ['ji-a','ji-b','ji-c'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('jmodal').classList.add('open');
+}
+function setJMW(i){jMW=i;document.querySelectorAll('.mw-btn').forEach((b,j)=>b.classList.toggle('on',j===i));}
+function closeJModal(){document.getElementById('jmodal').classList.remove('open');}
+function saveJournal(){
+  const a=document.getElementById('ji-a').value.trim();
+  const b=document.getElementById('ji-b').value.trim();
+  const c=document.getElementById('ji-c').value.trim();
+  if(!a&&!b&&!c)return;
+  S.journals.push({date:new Date().toISOString().slice(0,10),week:jMW,insight:a,values:b,tomorrow:c});
+  _sv();closeJModal();renderJournal();updateStats();
+}
+document.getElementById('jmodal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeJModal();});
+
+/* ── RATING ── */
+function renderRating(){
+  document.getElementById('rat-wsel').innerHTML=WKS.map((_,i)=>`<button class="f-btn${rWk===i?' on':''}" onclick="setRW(${i})">W${i+1}</button>`).join('');
+  renderRatItems();
+}
+function setRW(i){rWk=i;renderRating();}
+function renderRatItems(){
+  if(!S.ratings[rWk])S.ratings[rWk]={};
+  document.getElementById('rat-items').innerHTML=RAT_DIMS.map((dim,di)=>{
+    const sc=S.ratings[rWk][di]||0;
+    return`<div class="rat-item">
+      <div class="rat-hd"><span class="rat-name">${dim}</span><span class="rat-score" id="rs-${di}">${sc||'—'}</span></div>
+      <div class="stars">${[1,2,3,4,5,6,7,8,9,10].map(s=>`<span class="star${s<=sc?' on':''}" onclick="setRat(${di},${s})">●</span>`).join('')}</div>
+      <div class="rat-sub">${RAT_SUBS[di]}</div>
+    </div>`;
+  }).join('');
+  renderRadarChart();
+}
+function setRat(di,val){if(!S.ratings[rWk])S.ratings[rWk]={};S.ratings[rWk][di]=val;_sv();renderRatItems();}
+function renderRadarChart(){
+  const scores=RAT_DIMS.map((_,i)=>(S.ratings[rWk]&&S.ratings[rWk][i])||0);
+  const card=document.getElementById('radar-card');
+  if(!scores.some(s=>s>0)){card.style.display='none';return;}
+  card.style.display='block';
+  document.getElementById('radar-title').textContent=`Week ${rWk+1} 雷达图`;
+  const svg=document.getElementById('radar-svg'),cx=120,cy=120,R=80,n=4,step=Math.PI*2/n;
+  const xy=(i,r)=>[cx+r*Math.sin(i*step),cy-r*Math.cos(i*step)];
+  let h='';
+  [2,4,6,8,10].forEach(v=>{const pts=scores.map((_,i)=>xy(i,R*v/10).join(',')).join(' ');h+=`<polygon points="${pts}" fill="none" stroke="rgba(128,128,128,0.15)" stroke-width="0.5"/>`;});
+  for(let i=0;i<n;i++){const[x,y]=xy(i,R);h+=`<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="rgba(128,128,128,0.15)" stroke-width="0.5"/>`;}
+  const dpts=scores.map((s,i)=>xy(i,R*s/10).join(',')).join(' ');
+  h+=`<polygon points="${dpts}" fill="var(--accL)" fill-opacity=".6" stroke="var(--acc)" stroke-width="2"/>`;
+  scores.forEach((s,i)=>{const[x,y]=xy(i,R*s/10);h+=`<circle cx="${x}" cy="${y}" r="4" fill="var(--acc)"/>`;});
+  RAT_DIMS.forEach((l,i)=>{const[x,y]=xy(i,R+24);h+=`<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="middle" font-size="11" fill="var(--text2)">${l}</text>`;});
+  svg.innerHTML=h;
+}
+
+/* ── BUILD SIDEBAR ── */
+function buildSidebar(){
+  const cont=document.getElementById('sd-weeks');
+  WKS.forEach((w,i)=>{
+    const d=document.createElement('div');
+    d.className='sd-row'; d.id=`sdr-wk-${i}`;
+    d.onclick=()=>go('wk-'+i);
+    d.innerHTML=`<span class="sd-wn" id="sdn-${i}">${i+1}</span><span style="flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${w.title}</span><div class="sd-bar"><div class="sd-bar-fill" id="sdb-${i}" style="width:0%"></div></div>`;
+    cont.appendChild(d);
+  });
+}
+
+/* ── INIT ── */
+buildSidebar();
+renderDash();
+</script>
+</body>
+</html>
